@@ -11,7 +11,7 @@ By building a precise local model of the noise, PACO can perform a statistically
 
 - **Statistically Grounded Detection Maps**: The resulting Signal-to-Noise Ratio (SNR) map has a consistent false alarm rate across all angular separations.
 - **Unbiased Photometry**: The algorithm provides an unbiased estimate of the companion's flux without the self-subtraction issues common in other methods.
-- **Parameter-Free Detection**: It requires minimal parameter tuning, the only parameter you should worry about is the patch size. By default the radius of the patch is set as twice the FWHM of the system (as an good initial guess proposed by the authors), but finding its optimal value can drastically improve the detection performance.
+- **Parameter-Free Detection**: It requires minimal parameter tuning, the only parameter you should worry about is the patch size. By default the radius of the patch is set as twice the FWHM of the system (as a good initial guess proposed by the authors), but finding its optimal value can drastically improve the detection performance.
 
 ## About This Implementation
 
