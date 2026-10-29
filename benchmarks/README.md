@@ -6,7 +6,7 @@ Scripts behind the timing, memory and detection results of the accompanying pape
 
 No data is included in this repository.
 
-- **EIDC data (`challenge/subchallenge_1/`)**: the ADI datasets of subchallenge 1 of the Exoplanet Imaging Data Challenge (Cantalloube et al. 2020, Proc. SPIE 11448, 114485A), with the challenge's own file names (`sphere_irdis_cube_3.fits`, `sphere_irdis_pa_3.fits`, `sphere_irdis_psf_3.fits`, `sphere_irdis_pxscale_3.fits`, …). Obtain them from the challenge organizers and place them in that folder.
+- **EIDC data (`challenge/subchallenge_1/`)**: the ADI datasets of subchallenge 1 of the Exoplanet Imaging Data Challenge (Cantalloube et al. 2020, Proc. SPIE 11448, 114485A), with the challenge's own file names (`sphere_irdis_cube_3.fits`, `sphere_irdis_pa_3.fits`, `sphere_irdis_psf_3.fits`, `sphere_irdis_pxscale_3.fits`, …). They are on Zenodo, [doi:10.5281/zenodo.3361544](https://doi.org/10.5281/zenodo.3361544) (`subchallenge_1.zip`, ~2 GB); unzip the files into that folder.
 - **Real-instrument epochs (`firstepoch/`, `secondepoch/`)**: used only by `challenge/run_real_system_comparison.py` and the `load_epoch_dataset` helper; not distributed.
 - **Synthetic cubes**: generated on the fly by `_common.make_synthetic_dataset` (random correlated noise, field rotation 0–60°); no files needed.
 
