@@ -12,7 +12,7 @@ No data is included in this repository.
 
 ## Scripts
 
-`tests/test_cgroup_headroom.py` tests the cgroup-aware memory budget (`python -m pytest tests/`).
+`tests/test_cgroup_headroom.py` tests the cgroup-aware memory budget: `python tests/test_cgroup_headroom.py` (or `pytest tests/`).
 
 | Script | What it measures | Data |
 |---|---|---|
