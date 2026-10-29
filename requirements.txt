@@ -1,2 +1,5 @@
-numpy
-vip_hci
+numpy>=2.0
+scipy
+psutil
+tqdm
+vip_hci>=2.0

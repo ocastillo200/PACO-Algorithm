@@ -19,12 +19,13 @@ This project, provides a class-based implementation of the PACO algorithm, struc
 
 The key implemented components are:
 
-- **`FullPACO`**: A full implementation of **Algorithm 1** from the paper. This is the most statistically accurate version but is computationally intensive. It processes each potential source location by recalculating statistics along its specific trajectory.
-- **`FastPACO`**: An implementation of **Algorithm 2** from the paper. It accelerates detection by pre-calculating the statistical maps for the entire image and then interpolating, significantly reducing runtime.
+- **`FullPACOv2`**: An implementation of **Algorithm 1** from the paper. It computes the background statistics of each pixel on demand while sweeping the candidate positions, and stores them in a cache shared by all worker processes, so each pixel's statistics are computed once and reused by every candidate whose trajectory crosses it. Candidates are swept ring by ring (constant angular radius), and the cache is emptied between rings, which keeps its memory footprint to one ring's worth of statistics.
+- **`FastPACOv2`**: An implementation of **Algorithm 2** from the paper. It precomputes per-pixel quantities on the native pixel grid and interpolates them at each candidate's rotated position, which is much faster than Algorithm 1.
 - **Unbiased Flux Estimation**: The `estimate_flux_at` method implements **Algorithm 3** for iterative, unbiased photometric measurement of detected sources.
+- **Memory-aware batching**: every large allocation is sized from a single RAM budget, `memory_fraction` (default 0.8) of the memory available when a run starts. A larger field takes longer, but does not need more memory than the budget; when the cache is full, statistics are recomputed instead of stored, which costs time but never changes the result.
 - **Hardware Acceleration**:
-  - **Multiprocessing**: Utilizes multiple CPU cores to parallelize calculations.
-  - **GPU Support**: Includes a GPU-accelerated class using `cupy` for faster PSF model calculations, only works with `FullPACO` and It performs better in single core execution (no multiprocessing), further GPU support across the algorithm could be implemented to improve the performance even more.
+  - **Multiprocessing**: Utilizes multiple CPU cores to parallelize calculations. The parallel path uses the `fork` start method, so it requires Linux or macOS; on other platforms, use `cpu=1`.
+  - **GPU Support (optional)**: With `cupy` installed, the statistics stage can run on an NVIDIA GPU (`use_gpu=True`). This helps on small cubes but does not yet scale to large ones; the rest of the pipeline runs on the CPU.
 
 ## Installation
 
@@ -56,7 +57,7 @@ The following snippet shows how to load data and run the `FullPACOv2` algorithm 
 
 ```python
 import numpy as np
-from pacov2 import FullPACOv2
+from src import FullPACOv2
 from vip_hci.fits import open_fits
 from vip_hci.fm import normalize_psf
 from vip_hci.config import VLT_SPHERE_IRDIS
@@ -77,6 +78,7 @@ paco = FullPACOv2(
     psf=psfn,
     fwhm=fwhm,
     pixscale=pxscale,
+    memory_fraction=0.8,  # share of available RAM this run may use
     verbose=True
 )
 
