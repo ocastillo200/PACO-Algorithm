@@ -5,6 +5,7 @@ Provides cube management, patch extraction, background statistics,
 flux estimation, and the reference PACO algorithm (Algorithm 2, [FLA18]).
 """
 import multiprocessing
+import os
 import sys
 import time
 from typing import Callable, Dict, Generator, List, Literal, Optional, Tuple, Union
@@ -52,6 +53,69 @@ def _stats_worker(p0: tuple) -> tuple:
     patch = _g_get_patch((int(p0[0]), int(p0[1])))
     m, Cinv = compute_statistics_at_pixel(patch)
     return patch, m, Cinv
+
+
+def _read_int(path: str) -> Optional[int]:
+    """Integer content of a cgroup file; None if missing or unlimited."""
+    try:
+        with open(path) as f:
+            value = f.read().strip()
+    except OSError:
+        return None
+    if not value.isdigit():  # cgroup v2 writes "max" when unlimited
+        return None
+    return int(value)
+
+
+def cgroup_memory_headroom(proc_root: str = "/proc",
+                           cgroup_root: str = "/sys/fs/cgroup") -> Optional[int]:
+    """
+    Bytes this process can still allocate before reaching a Linux cgroup
+    memory limit (container, SLURM job, systemd scope), or None if no limit
+    applies (no cgroups, e.g. macOS, or unlimited).
+
+    The limit is often set on an ancestor of the process's own cgroup (SLURM
+    puts it on the job while tasks run in child cgroups), so every level up
+    to the root is checked and the smallest headroom (limit - usage) is
+    returned. Usage includes reclaimable page cache, so this errs on the
+    safe side. Both cgroup v2 (memory.max / memory.current) and v1
+    (memory.limit_in_bytes / memory.usage_in_bytes) are handled. The
+    arguments exist so tests can point at a fake hierarchy.
+    """
+    try:
+        with open(os.path.join(proc_root, "self", "cgroup")) as f:
+            lines = f.read().splitlines()
+    except OSError:
+        return None
+
+    candidates = []
+    for line in lines:
+        parts = line.split(":", 2)
+        if len(parts) != 3:
+            continue
+        _, controllers, rel = parts
+        if controllers == "":
+            # cgroup v2 unified hierarchy
+            base, limit_file, usage_file = cgroup_root, "memory.max", "memory.current"
+        elif "memory" in controllers.split(","):
+            # cgroup v1 memory controller
+            base, limit_file, usage_file = (os.path.join(cgroup_root, "memory"),
+                                            "memory.limit_in_bytes",
+                                            "memory.usage_in_bytes")
+        else:
+            continue
+        rel = rel.strip("/")
+        while True:
+            directory = os.path.join(base, rel) if rel else base
+            limit = _read_int(os.path.join(directory, limit_file))
+            # v1 reports "unlimited" as a huge number (~2^63)
+            if limit is not None and limit < 2 ** 60:
+                usage = _read_int(os.path.join(directory, usage_file)) or 0
+                candidates.append(max(limit - usage, 0))
+            if not rel:
+                break
+            rel = os.path.dirname(rel)
+    return min(candidates) if candidates else None
 
 
 class PACO:
@@ -182,11 +246,22 @@ class PACO:
         The run's host-RAM budget: `memory_fraction` of the RAM available
         right now. Read once at the start of PACOCalc, so allocations made
         earlier (e.g. the cube itself) are already excluded.
+
+        Inside a container or a batch-scheduler job (e.g. SLURM), the
+        process may be confined by a cgroup memory limit well below the
+        host's free RAM, and exceeding it gets the job killed; the
+        available memory is then the smaller of the two (see
+        cgroup_memory_headroom).
         """
-        budget = int(psutil.virtual_memory().available * self.memory_fraction)
+        available = psutil.virtual_memory().available
+        headroom = cgroup_memory_headroom()
+        source = "host"
+        if headroom is not None and headroom < available:
+            available, source = headroom, "cgroup limit"
+        budget = int(available * self.memory_fraction)
         if self.verbose:
             print(f"RAM budget: {budget / 1024**3:.2f} GiB "
-                  f"({self.memory_fraction:.0%} of available)")
+                  f"({self.memory_fraction:.0%} of available, {source})")
         return budget
 
     # ------------------------------------------------------------------

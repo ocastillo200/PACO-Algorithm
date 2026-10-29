@@ -12,9 +12,12 @@ No data is included in this repository.
 
 ## Scripts
 
+`tests/test_cgroup_headroom.py` tests the cgroup-aware memory budget (`python -m pytest tests/`).
+
 | Script | What it measures | Data |
 |---|---|---|
 | `e1_null_test.py` | Null-distribution test: S/N statistics on a companion-free (sign-reversed angles) sequence, this implementation vs VIP; `--check-covariance` compares the covariance estimates directly | EIDC sph3 |
+| `e9_memory_limit.py` | Completion under a fixed memory limit L: each run is killed if its process tree exceeds L (PSS on Linux); this implementation vs VIP, with a bit-for-bit check of our completed runs | EIDC sph3 or `--synthetic SIZE T` |
 | `bench_ring_speedup.py` | Speed-up and efficiency vs number of worker processes, fixed cube | synthetic |
 | `bench_ring_size_scaling.py` | Run time and peak memory vs cube size, fixed number of workers | synthetic |
 | `bench_ring_landscape.py` | Run time / memory over a grid of cube sizes and worker counts | synthetic |
