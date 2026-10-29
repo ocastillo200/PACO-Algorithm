@@ -506,9 +506,12 @@ class PACO:
         start_time = time.time()
         for i, p0 in enumerate(phi0s):
             angles_px = get_rotated_pixel_coords(x, y, p0, self.angles)
-            # angles_px[:, 0] = col coords, angles_px[:, 1] = row coords
-            if (np.any(angles_px[:, 0] < 0) or np.any(angles_px[:, 0] >= self.width) or
-                    np.any(angles_px[:, 1] < 0) or np.any(angles_px[:, 1] >= self.height)):
+            # angles_px[:, 0] = col coords, angles_px[:, 1] = row coords.
+            # Statistics are taken at the nearest pixel of each trajectory
+            # point (Flasseur et al. 2018, Table 1), as in FullPACOv2.
+            nearest = np.round(angles_px).astype(int)
+            if (np.any(nearest[:, 0] < 0) or np.any(nearest[:, 0] >= self.width) or
+                    np.any(nearest[:, 1] < 0) or np.any(nearest[:, 1] >= self.height)):
                 a[i] = np.nan
                 b[i] = np.nan
                 continue
@@ -516,7 +519,7 @@ class PACO:
             Cinlst, mlst, hlst, patch = [], [], [], []
             for l, ang in enumerate(angles_px):
                 # ang[0]=col, ang[1]=row; Cinv/m/patches are indexed [row, col]
-                row_i, col_i = int(ang[1]), int(ang[0])
+                row_i, col_i = nearest[l, 1], nearest[l, 0]
                 Cinlst.append(Cinv[row_i, col_i])
                 mlst.append(m[row_i, col_i])
                 if use_subpixel_psf_astrometry:
