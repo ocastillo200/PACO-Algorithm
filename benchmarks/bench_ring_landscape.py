@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Scaling landscape for FullPACOv2 (radius-ring traversal, the production
+Scaling landscape for PACO (radius-ring traversal, the production
 architecture -- see Sect. "Parallel architecture" of the accompanying
 paper) ONLY: no ORIGINAL/Manager-dict or SHM_NORING comparison here (that
 story is already told by benchmarks/bench_full_cube_comparison.py and
@@ -50,7 +50,7 @@ Usage
         --csv ring_landscape.csv
 
 Runtime note: this is len(spatial-sizes)+len(frame-counts)-1 shapes (the
-baseline is shared) times len(nproc) FullPACOv2 runs. At default settings
+baseline is shared) times len(nproc) PACO runs. At default settings
 that is 8 shapes x 7 nproc values = 56 runs; a single run on a large
 shape at nproc=1 can itself take many minutes (see the paper's own
 nproc=1 timings). Start with a reduced --nproc/--spatial-sizes/
@@ -69,7 +69,7 @@ from _common import (arrays_equal, make_synthetic_dataset, make_test_positions,
                      parse_nproc_list, print_system_info, ResultTable,
                      make_memory_monitor, mem_columns, mem_str)
 
-from src.full_paco import FullPACOv2
+from src.full_paco import PACO
 
 
 def parse_shape_list(arg: str, dim_index: int, base_shape):
@@ -153,7 +153,7 @@ def main():
     parser.add_argument("--seed", type=int, default=0)
     parser.add_argument("--use-gpu", dest="use_gpu", action="store_true", default=None,
                         help="Force GPU statistics prefill on (see "
-                             "FullPACOv2's own default: on if a CUDA "
+                             "PACO's own default: on if a CUDA "
                              "device is available).")
     parser.add_argument("--no-gpu", dest="use_gpu", action="store_false",
                         help="Force GPU statistics prefill off.")
@@ -228,7 +228,7 @@ def main():
             if args.use_gpu is not None:
                 calc_kwargs["use_gpu"] = args.use_gpu
 
-            obj = FullPACOv2(cube, pa, psf, fwhm=args.fwhm, verbose=False)
+            obj = PACO(cube, pa, psf, fwhm=args.fwhm, verbose=False)
             with make_memory_monitor(args) as mon:
                 t0 = time.perf_counter()
                 a, b = obj.PACOCalc(phi0s, cpu=nproc, **calc_kwargs)

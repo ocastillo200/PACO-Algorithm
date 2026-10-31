@@ -4,16 +4,16 @@ Data generation for Sect. 5.2 ("Contrast curves with injected companions")
 of paco_paper.tex.
 
 Runs VIP's vip_hci.metrics.contrast_curve injection-recovery machinery on
-our production FullPACOv2 implementation (src.full_paco). This is not
+our production PACO implementation (src.full_paco). This is not
 natively supported: contrast_curve/throughput require `algo` to be a plain
 callable with signature (cube, angle_list, verbose, **kwargs) returning a
 single 2D frame it can do aperture photometry on (see
 vip_hci/metrics/contrcurve.py:throughput, the `argl = getfullargspec(algo)`
-check). FullPACOv2 is a class needing (cube, angles, psf, fwhm, ...) at
+check). PACO is a class needing (cube, angles, psf, fwhm, ...) at
 construction and exposing .run(cpu=..., full_output=...) -> (snr, flux) --
 so this script wraps it in a closure satisfying VIP's contract, rather
-than modifying FullPACOv2 itself (nothing about the wrapped call is
-FullPACOv2-specific; the same wrapper works for any of this project's PACO
+than modifying PACO itself (nothing about the wrapped call is
+PACO-specific; the same wrapper works for any of this project's PACO
 classes).
 
 Units derivation -- why `starphot = aperture_flux(raw_psf, ..., fwhm)` is
@@ -21,13 +21,13 @@ the right choice here, even though our returned frame is already a
 contrast (not raw counts, unlike a typical PCA/KLIP residual frame):
 
   Let A = aperture_flux(raw_psf, 1 FWHM) (raw_psf = the same, UNNORMALIZED
-  psf array passed to FullPACOv2's constructor). src/full_paco.py uses
+  psf array passed to PACO's constructor). src/full_paco.py uses
   that raw psf directly as the per-frame template h in Eqs. 15-16 of
   Flasseur et al. (2018) (no extra normalize_psf call) -- so in our model
   r = alpha*h + f, alpha is already a *dimensionless* companion/star flux
   ratio (a contrast), not a raw-counts amplitude, PROVIDED the psf array
   represents the star's own PSF under the same conditions as the science
-  frames (which is exactly what PACO.__init__'s dit_science/dit_psf/
+  frames (which is exactly what PACOBase.__init__'s dit_science/dit_psf/
   nd_transmission rescaling is for).
 
   VIP's injection machinery, however, always re-normalizes whatever
@@ -83,7 +83,7 @@ from astropy.io import fits
 from vip_hci.metrics import aperture_flux
 from vip_hci.metrics.contrcurve import contrast_curve, noise_per_annulus
 
-from src.full_paco import FullPACOv2
+from src.full_paco import PACO
 
 DATA_DIR = os.path.join(ROOT, "challenge", "subchallenge_1")
 FIG_DIR = os.path.join(ROOT, "challenge", "figures")
@@ -238,7 +238,7 @@ def main():
     captured = []  # [(a_map, flux_map, snr_map), ...], first entry = no-fc call
 
     def paco_algo(cube, angle_list, verbose=False, **kwargs):
-        obj = FullPACOv2(cube, angle_list, psf, fwhm=fwhm, pixscale=pxscale,
+        obj = PACO(cube, angle_list, psf, fwhm=fwhm, pixscale=pxscale,
                          verbose=False)
         t0 = time.perf_counter()
         snr, flux = obj.run(cpu=args.cpu, use_gpu=False, full_output=True)
@@ -276,7 +276,7 @@ def main():
           f"(nbranch={args.nbranch}, fc_rad_sep={args.fc_rad_sep}, "
           f"fc_snr={args.fc_snr}) -- this dispatches "
           f"1 + nbranch*fc_rad_sep = {1 + args.nbranch * args.fc_rad_sep} "
-          "full FullPACOv2 runs...\n", flush=True)
+          "full PACO runs...\n", flush=True)
 
     t_start = time.perf_counter()
     datafr, frame_fc_all, frame_nofc, fc_map_all = contrast_curve(

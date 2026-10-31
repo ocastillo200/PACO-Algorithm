@@ -11,10 +11,10 @@ CuPy/CUDA device there), so this is the first real test of:
      host<->device transfer).
   2. src.gpu.GPUStatisticsBatcher (VRAM-budgeted chunking on top of #1).
   3. The three call sites wired to use_gpu=True:
-       - PACO.PACOCalc / compute_statistics_gpu (base Algorithm 1)
-       - FastPACOv2.PACOCalc Stage 1 (compute_stage1_streamed: also folds in
+       - PACOBase.PACOCalc / compute_statistics_gpu (base Algorithm 1)
+       - FastPACO.PACOCalc Stage 1 (compute_stage1_streamed: also folds in
          the PSF contraction to (c, d), see that method's docstring)
-       - FullPACOv2.PACOCalc's per-ring GPU cache prefill
+       - PACO.PACOCalc's per-ring GPU cache prefill
 
 For each, this script runs CPU (use_gpu=False) and GPU (use_gpu=True) on the
 identical dataset/positions and checks np.allclose on the final (a, b)
@@ -54,9 +54,9 @@ from _common import (arrays_equal, make_arg_parser, make_test_positions,
                      parse_nproc_list, make_memory_monitor, mem_columns, mem_str)
 
 from src.gpu import GPU_AVAILABLE
-from src.paco_base import PACO
-from src.fast_paco import FastPACOv2
-from src.full_paco import FullPACOv2
+from src.paco_base import PACOBase
+from src.fast_paco import FastPACO
+from src.full_paco import PACO
 
 
 def main():
@@ -100,12 +100,12 @@ def main():
         print(f"--- nproc={nproc} ---")
 
         # 1. Base PACO (Algorithm 1) statistics stage
-        p_cpu = PACO(cube, pa, psf, fwhm=fwhm, verbose=False)
+        p_cpu = PACOBase(cube, pa, psf, fwhm=fwhm, verbose=False)
         t0 = time.perf_counter()
         a_cpu, b_cpu = p_cpu.PACOCalc(phi0s, cpu=nproc, use_gpu=False)
         t_cpu = time.perf_counter() - t0
 
-        p_gpu = PACO(cube, pa, psf, fwhm=fwhm, verbose=False)
+        p_gpu = PACOBase(cube, pa, psf, fwhm=fwhm, verbose=False)
         with make_memory_monitor(args) as mon1:
             t0 = time.perf_counter()
             a_gpu, b_gpu = p_gpu.PACOCalc(phi0s, cpu=nproc, use_gpu=True,
@@ -121,13 +121,13 @@ def main():
                   **mem_columns(mon1),
                   correct=("OK" if ok else "MISMATCH"))
 
-        # 2. FastPACOv2 Stage 1
-        f_cpu = FastPACOv2(cube, pa, psf, fwhm=fwhm, verbose=False)
+        # 2. FastPACO Stage 1
+        f_cpu = FastPACO(cube, pa, psf, fwhm=fwhm, verbose=False)
         t0 = time.perf_counter()
         a_cpu2, b_cpu2 = f_cpu.PACOCalc(phi0s, cpu=nproc, use_gpu=False)
         t_cpu2 = time.perf_counter() - t0
 
-        f_gpu = FastPACOv2(cube, pa, psf, fwhm=fwhm, verbose=False)
+        f_gpu = FastPACO(cube, pa, psf, fwhm=fwhm, verbose=False)
         with make_memory_monitor(args) as mon2:
             t0 = time.perf_counter()
             a_gpu2, b_gpu2 = f_gpu.PACOCalc(phi0s, cpu=nproc, use_gpu=True,
@@ -136,20 +136,20 @@ def main():
 
         ok2, detail2 = arrays_equal(a_cpu2, b_cpu2, a_gpu2, b_gpu2)
         speedup2 = t_cpu2 / t_gpu2 if t_gpu2 > 0 else float("nan")
-        print(f"  [FastPACOv2]      cpu={t_cpu2:.2f}s gpu={t_gpu2:.2f}s "
+        print(f"  [FastPACO]      cpu={t_cpu2:.2f}s gpu={t_gpu2:.2f}s "
               f"speedup={speedup2:.2f}x {mem_str(mon2)} correct={ok2}{detail2}")
-        table.add(stage="FastPACOv2", nproc=nproc, cpu_s=f"{t_cpu2:.2f}",
+        table.add(stage="FastPACO", nproc=nproc, cpu_s=f"{t_cpu2:.2f}",
                   gpu_s=f"{t_gpu2:.2f}", speedup=f"{speedup2:.2f}x",
                   **mem_columns(mon2),
                   correct=("OK" if ok2 else "MISMATCH"))
 
-        # 3. FullPACOv2 (ring traversal + GPU prefill)
-        fp_cpu = FullPACOv2(cube, pa, psf, fwhm=fwhm, verbose=False)
+        # 3. PACO (ring traversal + GPU prefill)
+        fp_cpu = PACO(cube, pa, psf, fwhm=fwhm, verbose=False)
         t0 = time.perf_counter()
         a_cpu3, b_cpu3 = fp_cpu.PACOCalc(phi0s, cpu=nproc, use_gpu=False)
         t_cpu3 = time.perf_counter() - t0
 
-        fp_gpu = FullPACOv2(cube, pa, psf, fwhm=fwhm, verbose=False)
+        fp_gpu = PACO(cube, pa, psf, fwhm=fwhm, verbose=False)
         with make_memory_monitor(args) as mon3:
             t0 = time.perf_counter()
             a_gpu3, b_gpu3 = fp_gpu.PACOCalc(phi0s, cpu=nproc, use_gpu=True,
@@ -158,9 +158,9 @@ def main():
 
         ok3, detail3 = arrays_equal(a_cpu3, b_cpu3, a_gpu3, b_gpu3)
         speedup3 = t_cpu3 / t_gpu3 if t_gpu3 > 0 else float("nan")
-        print(f"  [FullPACOv2]      cpu={t_cpu3:.2f}s gpu={t_gpu3:.2f}s "
+        print(f"  [PACO]      cpu={t_cpu3:.2f}s gpu={t_gpu3:.2f}s "
               f"speedup={speedup3:.2f}x {mem_str(mon3)} correct={ok3}{detail3}")
-        table.add(stage="FullPACOv2", nproc=nproc, cpu_s=f"{t_cpu3:.2f}",
+        table.add(stage="PACO", nproc=nproc, cpu_s=f"{t_cpu3:.2f}",
                   gpu_s=f"{t_gpu3:.2f}", speedup=f"{speedup3:.2f}x",
                   **mem_columns(mon3),
                   correct=("OK" if ok3 else "MISMATCH"))

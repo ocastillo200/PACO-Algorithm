@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Speedup/efficiency vs. worker-process count for FullPACOv2 (radius-ring
+Speedup/efficiency vs. worker-process count for PACO (radius-ring
 traversal, the production architecture), at a SINGLE fixed, representative
 dataset shape. This is the "pure nproc" experiment: dataset size is held
 constant so the only thing varying across rows is core count, which keeps
@@ -41,7 +41,7 @@ from _common import (arrays_equal, make_synthetic_dataset, make_test_positions,
                      parse_nproc_list, print_system_info, ResultTable,
                      make_memory_monitor, mem_columns, mem_str)
 
-from src.full_paco import FullPACOv2
+from src.full_paco import PACO
 
 
 def main():
@@ -70,7 +70,7 @@ def main():
     parser.add_argument("--seed", type=int, default=0)
     parser.add_argument("--use-gpu", dest="use_gpu", action="store_true", default=None,
                         help="Force GPU statistics prefill on (see "
-                             "FullPACOv2's own default: on if a CUDA "
+                             "PACO's own default: on if a CUDA "
                              "device is available).")
     parser.add_argument("--no-gpu", dest="use_gpu", action="store_false",
                         help="Force GPU statistics prefill off.")
@@ -128,7 +128,7 @@ def main():
         print(f">>> [{i+1}/{len(nprocs)}] nproc={nproc} "
               f"(script running {elapsed_script/60:.1f} min so far)", flush=True)
 
-        obj = FullPACOv2(cube, pa, psf, fwhm=args.fwhm, verbose=False)
+        obj = PACO(cube, pa, psf, fwhm=args.fwhm, verbose=False)
         with make_memory_monitor(args) as mon:
             t0 = time.perf_counter()
             a, b = obj.PACOCalc(phi0s, cpu=nproc, **calc_kwargs)

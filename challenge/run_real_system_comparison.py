@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Real-instrument comparison: our production ring-traversal FullPACOv2
+Real-instrument comparison: our production ring-traversal PACO
 (src.full_paco, radius-ring shared-memory cache) vs VIP's own FastPACO
 (vip_hci.invprob.paco -- the "pyPACO" of the EIDC challenge), on a real,
 non-EIDC ADI dataset with no formal ground truth, measuring:
@@ -13,7 +13,7 @@ non-EIDC ADI dataset with no formal ground truth, measuring:
     psutil/cgroup backends (see --memory-backend)
 
 Only FastPACO is used on the VIP side (not VIP's plain PACO class), and
-only the ring-traversal FullPACOv2 on ours (not the NORING/ORIGINAL
+only the ring-traversal PACO on ours (not the NORING/ORIGINAL
 variants benchmarks/bench_full_cube_comparison.py also exercises).
 Reasoning (matches benchmarks/bench_vs_vippaco.py's own, more detailed
 comment): VIP's plain PACO class does not implement multiprocessing at
@@ -69,15 +69,15 @@ FWHM value passed to both algorithms; normalize_psf still runs regardless
 
 pixscale -- also mirrors example.py's own active choice, not the
 "standard" VLT_SPHERE_IRDIS['plsc'] (0.01225 arcsec/px): example.py
-computes that standard constant but its active (uncommented) FullPACOv2
+computes that standard constant but its active (uncommented) PACO
 call passes a different, hardcoded pixscale=0.0145 instead, together with
 fwhm expressed directly in pixels (no arcsec conversion). Default here is
-that same 0.0145 for OUR OWN FullPACOv2 call, for exact fidelity to the
+that same 0.0145 for OUR OWN PACO call, for exact fidelity to the
 working reference; override with --pixscale if you have a reason to use a
 different value for a given dataset.
 
 --pixscale is deliberately NOT reused as-is for VIP's FastPACO call. Our
-own PACO.__init__ (src/paco_base.py) treats fwhm (pixels) and pixscale as
+own PACOBase.__init__ (src/paco_base.py) treats fwhm (pixels) and pixscale as
 independent -- patch_width is derived from fwhm alone, pixscale is stored
 only for other, unrelated uses. VIP's own PACO.__init__ instead computes
 self.fwhm = int(fwhm/pixscale) and uses THAT single coupled value as its
@@ -90,7 +90,7 @@ degenerate result, or an extremely long/hung run trying to extract
 impossibly large patches (confirmed empirically on a small synthetic
 test: VIP's FastPACO never returned). Instead, this script derives a
 separate vip_pixscale so VIP's own coupled formula lands on the SAME
-patch radius our own FullPACOv2 actually uses (matching the exact
+patch radius our own PACO actually uses (matching the exact
 approach already established and verified in benchmarks/bench_vs_vippaco.py
 and challenge/run_vippaco_sph3.py) -- pass --vip-pixscale to override
 this derivation directly if you have a specific reason to.
@@ -132,7 +132,7 @@ from scipy.ndimage import maximum_filter, label, find_objects
 from vip_hci.fits import open_fits
 from vip_hci.fm import normalize_psf
 
-from src.full_paco import FullPACOv2
+from src.full_paco import PACO
 from _common import make_memory_monitor, mem_columns, mem_str
 
 try:
@@ -223,17 +223,17 @@ def main():
                              "'size' argument (default: 19, matching "
                              "example.py exactly).")
     parser.add_argument("--patch-radius-dec", type=int, default=-2,
-                        help="Passed to our own FullPACOv2 only (VIP's "
+                        help="Passed to our own PACO only (VIP's "
                              "FastPACO has no equivalent parameter -- see "
                              "src/paco_base.py's patch_radius_dec). "
                              "Default -2, matching example.py's active "
-                             "FullPACOv2 call.")
+                             "PACO call.")
     parser.add_argument("--pixscale", type=float, default=0.0145,
-                        help="Arcsec/pixel, passed to OUR OWN FullPACOv2's "
+                        help="Arcsec/pixel, passed to OUR OWN PACO's "
                              "constructor (and used for figure/CSV "
                              "labeling). Default 0.0145, matching "
                              "example.py's own active (uncommented) "
-                             "FullPACOv2 call -- NOT the 'standard' "
+                             "PACO call -- NOT the 'standard' "
                              "VLT_SPHERE_IRDIS['plsc'] (0.01225), which "
                              "example.py computes but does not actually "
                              "use in that call. NOT reused directly for "
@@ -244,7 +244,7 @@ def main():
                              "constructor specifically. Default: derived "
                              "so VIP's own coupled "
                              "self.fwhm=int(fwhm/pixscale) formula lands "
-                             "on the SAME patch radius our own FullPACOv2 "
+                             "on the SAME patch radius our own PACO "
                              "computes from --fwhm/--patch-radius-dec "
                              "(see the module docstring for why reusing "
                              "--pixscale directly for VIP is wrong and, "
@@ -346,9 +346,9 @@ def main():
     # but kept explicit for fidelity to the reference and as the natural
     # place to change them if a given dataset's reduction needs it).
 
-    # --- Ours: production ring-traversal FullPACOv2 ---
-    print("\n=== Ours: FullPACOv2 (ring traversal) ===", flush=True)
-    obj = FullPACOv2(cube, angles, psf, fwhm=fwhm, pixscale=args.pixscale,
+    # --- Ours: production ring-traversal PACO ---
+    print("\n=== Ours: PACO (ring traversal) ===", flush=True)
+    obj = PACO(cube, angles, psf, fwhm=fwhm, pixscale=args.pixscale,
                      dit_psf=1.0, dit_science=1.0, nd_transmission=1.0,
                      rescaling_factor=1.0,
                      patch_radius_dec=args.patch_radius_dec,
@@ -358,7 +358,7 @@ def main():
         snr_ours, flux_ours = obj.run(cpu=args.cpu, use_gpu=False, full_output=True)
         t_ours = time.perf_counter() - t0
     print(f"  time={t_ours:.1f}s  {mem_str(mon)}", flush=True)
-    results["ours"] = {"label": "Ours: FullPACOv2 (ring)", "snr": snr_ours,
+    results["ours"] = {"label": "Ours: PACO (ring)", "snr": snr_ours,
                        "time_s": t_ours, "mon": mon}
 
     # --- VIP FastPACO ("pyPACO") ---

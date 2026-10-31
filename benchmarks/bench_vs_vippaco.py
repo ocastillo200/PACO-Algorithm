@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
 """
-Comparison: our production shared-memory FullPACOv2 (radius-ring traversal,
-src.full_paco) vs VIP's own PACO implementation (vip_hci.invprob.paco), on
-real sph3 data, across an nproc sweep, measuring wall-clock time and peak
-memory.
+E7 -- our PACO (shared-memory cache, radius-ring traversal) and
+FastPACO (Algorithm 2 with interpolation) vs VIP's FastPACO
+(vip_hci.invprob.paco), on real sph3 data, across an nproc sweep, with
+repeated runs: wall-clock time (median, min, max) and peak memory.
 
 Why VIP's FastPACO is the right comparison target (not VIP's FullPACO):
 VIP's FullPACO.PACOCalc explicitly does not implement multiprocessing at
@@ -11,15 +11,14 @@ all -- passing cpu > 1 just prints "Multiprocessing for full PACO is not
 yet implemented!" and runs serially regardless (see
 vip_hci/invprob/paco.py, class FullPACO). VIP's FastPACO is the only one of
 their two implementations with real (if naively designed) multiprocessing:
-its Stage 1 (compute_statistics_parallel) dispatches BOUND methods
-(self.get_patch) to a fresh multiprocessing.Pool per call via pool_map --
-the exact "pickles the whole `self`/cube per task" anti-pattern this
-codebase's own FastPACOv2/FullPACOv2 started from and moved away from (see
-those modules' docstrings). VIP's FastPACO Stage 2 (the per-pixel
-PSF-shift-and-assemble sweep, using nearest-pixel Cinv/m lookups -- NOT the
-spatial c/d-map interpolation our own FastPACOv2 does) is not parallelized
-at all, serial regardless of cpu -- so VIP's achievable speedup has a hard
-ceiling set by that always-serial stage, however many cores you give it.
+its Stage 1 (compute_statistics_parallel) dispatches a BOUND method
+(self.get_patch) to a multiprocessing.Pool via pool_map, so the object
+holding the cube is serialized with each chunk of tasks sent to the
+workers. VIP's FastPACO Stage 2 (the per-pixel PSF-shift-and-assemble
+sweep, using truncated-pixel Cinv/m lookups -- NOT the spatial c/d-map
+interpolation of Algorithm 2 that our FastPACO does) runs serially
+whatever cpu is, which by Amdahl's law limits its speed-up; this script
+measures by how much.
 In practice VIP's FastPACO and FullPACO compute almost the same thing
 (both do a nearest-pixel lookup sweep); FastPACO just also offers a
 (partially) parallel statistics precompute, making it VIP's best/only
@@ -45,22 +44,17 @@ Position count is ALWAYS the full native grid, regardless of --npix/
 hard-reshape their flat results into (width, height, ...) assuming phi0s
 covers the *entire* image (see vip_hci/invprob/paco.py:1059) -- passing it
 a partial subset raises ValueError (confirmed empirically). Our own
-FullPACOv2 has no such restriction and would happily take a subset, but
+PACO has no such restriction and would happily take a subset, but
 there is no fair "partial run" mode to compare against here: this is an
 architectural fact about VIP's implementation, not a benchmark choice.
-Expect this to be slow for VIP at nproc>1 -- its Stage 1
-(compute_statistics_parallel) dispatches a bound method (self.get_patch)
-per task, re-pickling the whole `self` (including the cube) on every one
-of the 25600 sph3 pixels; the ORIGINAL variant in
-bench_full_cube_comparison.py (a related but less naive anti-pattern --
-Manager-dict, not per-task self-pickling) already took 642-824s on this
-same dataset, so treat that as a lower bound on how slow VIP's Stage 1
-alone could be.
+Expect VIP to be slow: one serial run took ~575 s and an 8-worker run
+~695 s on this dataset (E9), so a full sweep with repeats takes hours.
 
 Usage
 -----
-    python3 benchmarks/bench_vs_vippaco.py
-    python3 benchmarks/bench_vs_vippaco.py --nproc 2,4,8,16
+    python3 benchmarks/bench_vs_vippaco.py --nproc 1,2,4,8,16,32 --repeats 3 \
+        --memory-backend pss --csv e7_vs_vip.csv
+    python3 benchmarks/bench_vs_vippaco.py --nproc 8 --repeats 1   # quick check
 """
 import os
 import time
@@ -69,7 +63,8 @@ from _common import (make_arg_parser, make_test_positions, load_dataset_from_arg
                      print_system_info, ResultTable, parse_nproc_list,
                      make_memory_monitor, mem_columns, mem_str)
 
-from src.full_paco import FullPACOv2
+from src.fast_paco import FastPACO
+from src.full_paco import PACO
 
 try:
     from vip_hci.invprob.paco import FastPACO as VIP_FastPACO
@@ -86,6 +81,11 @@ def main():
                              "mask radius = int(fwhm/pixscale)). Default: "
                              "auto-computed so VIP's radius matches ours "
                              "(int(2*fwhm)//2) exactly.")
+    parser.add_argument("--repeats", type=int, default=1,
+                        help="Runs per (implementation, nproc); the summary "
+                             "reports the median, min and max time.")
+    parser.add_argument("--skip-vip", action="store_true",
+                        help="Time only our two implementations.")
     args = parser.parse_args()
     print_system_info()
 
@@ -121,44 +121,72 @@ def main():
     nprocs = parse_nproc_list(args.nproc, os.cpu_count())
     print(f"nproc sweep: {nprocs}\n")
 
-    table = ResultTable(["impl", "nproc", "time_s", "mem_parent_mb",
+    table = ResultTable(["impl", "nproc", "repeat", "time_s", "mem_parent_mb",
                         "mem_maxworker_mb", "mem_combined_mb",
                         "mem_real_mb", "K"])
 
+    def run_ours_full(nproc):
+        # PACOCalc (not run()) so we time the exact candidate set VIP gets.
+        obj = PACO(cube, pa, psf, fwhm=fwhm, verbose=False)
+        obj.PACOCalc(phi0s, cpu=nproc, use_gpu=False)
+        return obj.patch_area_pixels
+
+    def run_ours_fast(nproc):
+        # run() evaluates the full native grid, the same candidate set.
+        obj = FastPACO(cube, pa, psf, fwhm=fwhm, verbose=False)
+        obj.run(cpu=nproc)
+        return obj.patch_area_pixels
+
+    def run_vip(nproc):
+        obj = VIP_FastPACO(cube, pa, psf, fwhm=fwhm, pixscale=vip_pixscale,
+                           verbose=False)
+        obj.PACOCalc(phi0s_vip, cpu=nproc)
+        return obj.patch_area_pixels
+
+    impls = [("OURS_FullPACOv2", run_ours_full), ("OURS_FastPACOv2", run_ours_fast)]
+    if not args.skip_vip:
+        impls.append(("VIP_FastPACO", run_vip))
+
+    times = {}
     for nproc in nprocs:
-        print(f"--- nproc={nproc} ---")
-
-        # Ours: current production shared-memory, ring-traversal FullPACOv2.
-        # PACOCalc (not run()) so we time the exact same candidate set VIP
-        # gets, bypassing our run()'s own full-grid meshgrid construction.
-        ours = FullPACOv2(cube, pa, psf, fwhm=fwhm, verbose=False)
-        with make_memory_monitor(args) as mon:
-            t0 = time.perf_counter()
-            ours.PACOCalc(phi0s, cpu=nproc, use_gpu=False)
-            t_ours = time.perf_counter() - t0
-        print(f"  {'OURS_FullPACOv2':20s} time={t_ours:9.2f}s  {mem_str(mon)}  "
-              f"K={ours.patch_area_pixels}")
-        table.add(impl="OURS_FullPACOv2", nproc=nproc, time_s=f"{t_ours:.2f}",
-                  **mem_columns(mon), K=ours.patch_area_pixels)
-
-        # VIP's FastPACO -- their only implementation with real multiprocessing.
-        vip_obj = VIP_FastPACO(cube, pa, psf, fwhm=fwhm, pixscale=vip_pixscale,
-                               verbose=False)
-        with make_memory_monitor(args) as mon:
-            t0 = time.perf_counter()
-            vip_obj.PACOCalc(phi0s_vip, cpu=nproc)
-            t_vip = time.perf_counter() - t0
-        print(f"  {'VIP_FastPACO':20s} time={t_vip:9.2f}s  {mem_str(mon)}  "
-              f"K={vip_obj.patch_area_pixels}")
-        table.add(impl="VIP_FastPACO", nproc=nproc, time_s=f"{t_vip:.2f}",
-                  **mem_columns(mon), K=vip_obj.patch_area_pixels)
-
-        speedup = t_vip / t_ours if t_ours > 0 else float("nan")
-        print(f"  -> speedup (VIP / ours): {speedup:.2f}x\n")
+        print(f"--- nproc={nproc} ---", flush=True)
+        for name, fn in impls:
+            for rep in range(args.repeats):
+                with make_memory_monitor(args) as mon:
+                    t0 = time.perf_counter()
+                    K = fn(nproc)
+                    dt = time.perf_counter() - t0
+                times.setdefault((name, nproc), []).append(dt)
+                print(f"  {name:16s} repeat {rep + 1}/{args.repeats} "
+                      f"time={dt:9.2f}s  {mem_str(mon)}  K={K}", flush=True)
+                table.add(impl=name, nproc=nproc, repeat=rep, time_s=f"{dt:.2f}",
+                          **mem_columns(mon), K=K)
 
     table.print_table()
     if args.csv:
         table.write_csv(args.csv)
+
+    import statistics
+    print("\n=== Summary: median [min, max] wall time (s) ===")
+    names = [n for n, _ in impls]
+    print(f"{'nproc':>6}  " + "".join(f"{n:>30}" for n in names)
+          + ("   VIP/ours-Full  VIP/ours-Fast" if "VIP_FastPACO" in names else ""))
+    for nproc in nprocs:
+        cells, med = [], {}
+        for n in names:
+            ts = times[(n, nproc)]
+            med[n] = statistics.median(ts)
+            cells.append(f"{med[n]:10.2f} [{min(ts):.2f}, {max(ts):.2f}]".rjust(30))
+        line = f"{nproc:>6}  " + "".join(cells)
+        if "VIP_FastPACO" in names:
+            line += (f"   {med['VIP_FastPACO'] / med['OURS_FullPACOv2']:13.1f}"
+                     f"  {med['VIP_FastPACO'] / med['OURS_FastPACOv2']:13.1f}")
+        print(line)
+    for n in names:
+        base = statistics.median(times[(n, nprocs[0])])
+        print(f"speed-up of {n} relative to nproc={nprocs[0]}: "
+              + ", ".join(f"{p}: {base / statistics.median(times[(n, p)]):.1f}"
+                          for p in nprocs))
 
 
 if __name__ == "__main__":

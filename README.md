@@ -19,8 +19,10 @@ This project provides a class-based implementation of the PACO algorithm, struct
 
 The key implemented components are:
 
-- **`FullPACOv2`**: An implementation of **Algorithm 1** from the paper. It computes the background statistics of each pixel on demand while sweeping the candidate positions, and stores them in a cache shared by all worker processes, so each pixel's statistics are computed once and reused by every candidate whose trajectory crosses it. Candidates are swept ring by ring (constant angular radius), and the cache is emptied between rings, which keeps its memory footprint to one ring's worth of statistics.
-- **`FastPACOv2`**: An implementation of **Algorithm 2** from the paper. It precomputes per-pixel quantities on the native pixel grid and interpolates them at each candidate's rotated position, which is much faster than Algorithm 1.
+- **`PACO`**: An implementation of **Algorithm 1** from the paper (called full PACO where it must be told apart from the fast variant). It computes the background statistics of each pixel on demand while sweeping the candidate positions, and stores them in a cache shared by all worker processes, so each pixel's statistics are computed once and reused by every candidate whose trajectory crosses it. Candidates are swept ring by ring (constant angular radius), and the cache is emptied between rings, which keeps its memory footprint to one ring's worth of statistics.
+- **`FastPACO`**: An implementation of **Algorithm 2** from the paper (fast PACO). It precomputes per-pixel quantities on the native pixel grid and interpolates them at each candidate's rotated position, which is much faster than Algorithm 1.
+
+The former class names `FullPACOv2` and `FastPACOv2` still work as deprecated aliases.
 - **Unbiased Flux Estimation**: The `estimate_flux_at` method implements **Algorithm 3** for iterative, unbiased photometric measurement of detected sources.
 - **Memory-aware batching**: every large allocation is sized from a single RAM budget, `memory_fraction` (default 0.8) of the memory available when a run starts (inside a container or a SLURM job, the headroom below its cgroup memory limit, if that is smaller). A larger field takes longer, but does not need more memory than the budget; when the cache is full, statistics are recomputed instead of stored, which costs time but never changes the result.
 - **Hardware Acceleration**:
@@ -53,11 +55,11 @@ The key implemented components are:
 
 ### Basic Example
 
-The following snippet shows how to load data and run the `FullPACOv2` algorithm to generate SNR and flux maps.
+The following snippet shows how to load data and run the `PACO` algorithm to generate SNR and flux maps.
 
 ```python
 import numpy as np
-from src import FullPACOv2
+from src import PACO
 from vip_hci.fits import open_fits
 from vip_hci.fm import normalize_psf
 from vip_hci.config import VLT_SPHERE_IRDIS
@@ -72,7 +74,7 @@ psfn, flux_normalized, fwhm = normalize_psf(psf, full_output=True)
 pxscale = VLT_SPHERE_IRDIS['plsc']
 
 # 3. Initialize the PACO algorithm
-paco = FullPACOv2(
+paco = PACO(
     cube=cube,
     angle_list=angles,
     psf=psfn,

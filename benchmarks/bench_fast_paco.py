@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
 """
-Benchmark + correctness check: FastPACOv2 original design (bound-method
+Benchmark + correctness check: FastPACO original design (bound-method
 dispatch to pool_map(), fresh Pool per batch per stage) vs the current
 module-level-function + fork-inherited-globals design
-(src.fast_paco.FastPACOv2).
+(src.fast_paco.FastPACO).
 
 Usage
 -----
@@ -27,17 +27,17 @@ from vip_hci.fm import normalize_psf
 from _common import (arrays_equal, make_arg_parser, make_test_positions,
                      load_dataset_from_args, print_system_info, ResultTable)
 
-from src.paco_base import PACO
-from src.fast_paco import FastPACOv2
+from src.paco_base import PACOBase
+from src.fast_paco import FastPACO
 from src.math_utils import compute_statistics_at_pixel
 from src.utils import create_boolean_circular_mask, get_rotated_pixel_coords
 
 
 # ═════════════════════════════════════════════════════════════════════════
-# Original FastPACOv2 design, preserved here for comparison (no longer in
+# Original FastPACO design, preserved here for comparison (no longer in
 # src/fast_paco.py — see that file's module docstring for why).
 # ═════════════════════════════════════════════════════════════════════════
-class FastPACOv2_Original(PACO):
+class FastPACO_Original(PACOBase):
     def PACOCalc(self, phi0s, interpolation_order=1, cpu=1,
                  memory_threshold_gb=None, **kwargs):
         import psutil
@@ -170,10 +170,10 @@ def main():
 
     print(f"Dataset: cube={cube.shape}, fwhm={fwhm}, N test positions={len(phi0s)}\n")
 
-    OldCls, NewCls = FastPACOv2_Original, FastPACOv2
+    OldCls, NewCls = FastPACO_Original, FastPACO
     if args.force_batch_size is not None:
-        OldCls = type("FastPACOv2_Original_Forced", (_ForcedBatchMixin, FastPACOv2_Original), {})
-        NewCls = type("FastPACOv2_Forced", (_ForcedBatchMixin, FastPACOv2), {})
+        OldCls = type("FastPACO_Original_Forced", (_ForcedBatchMixin, FastPACO_Original), {})
+        NewCls = type("FastPACO_Forced", (_ForcedBatchMixin, FastPACO), {})
         print(f"Forcing batch_size={args.force_batch_size}\n")
 
     from _common import parse_nproc_list

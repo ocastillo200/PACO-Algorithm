@@ -15,7 +15,7 @@ file, not hardcoded to any one workstation):
      fix and the patch-extraction fixes made to src/ this session -- both
      touch the exact flux computation this factor calibrates.
   2. challenge/make_contrast_curve_sph3.py -- runs VIP's injection-recovery
-     contrast_curve machinery against FullPACOv2 on the full field, using
+     contrast_curve machinery against PACO on the full field, using
      the calibration factor measured in step 1, and writes the CSV/figure
      this section of the paper is built from.
 
@@ -96,7 +96,7 @@ def main():
     parser.add_argument("--nbranch", type=int, default=1,
                         help="Passed through to make_contrast_curve_sph3.py. "
                              "Each additional branch multiplies the number "
-                             "of full FullPACOv2 runs dispatched "
+                             "of full PACO runs dispatched "
                              "(1 + nbranch*fc_rad_sep total).")
     parser.add_argument("--fc-rad-sep", type=int, default=3,
                         help="Passed through to make_contrast_curve_sph3.py.")

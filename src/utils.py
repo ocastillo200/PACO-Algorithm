@@ -56,7 +56,7 @@ def get_rotated_pixel_coords(x: np.ndarray,
     # indexing with int(p0) — indexing silently floors p0 to the nearest
     # pixel, which makes fractional (sub-pixel) candidate positions
     # collapse onto the same integer cell and makes `oversampling` in
-    # PACO.run() a no-op (verified: two different sub-pixel p0 values in
+    # PACOBase.run() a no-op (verified: two different sub-pixel p0 values in
     # the same integer cell used to return identical rotated coordinates).
     width = x.shape[1]
     height = x.shape[0]
@@ -121,7 +121,7 @@ def extract_patch_window(cube: np.ndarray,
     Extract the temporal column of patch pixels centred at px.
 
     Shared implementation for what used to be four near-identical copies
-    (PACO.get_patch and the module-level _g_get_patch in paco_base.py,
+    (PACOBase.get_patch and the module-level _g_get_patch in paco_base.py,
     fast_paco.py, and full_paco.py) of the same logic, all built around
 
         mask = create_boolean_circular_mask(cube[0].shape, radius=k, center=px)
@@ -134,7 +134,7 @@ def extract_patch_window(cube: np.ndarray,
     cube this measured at 109 ms/call (vs 0.05 ms/call for the windowed
     version below, a ~2200x difference), and this function is called on
     every cache miss in every PACO variant. For a large field this was the
-    dominant cost behind FullPACOv2's radius-ring traversal running
+    dominant cost behind PACO's radius-ring traversal running
     dramatically slower than expected, since its GPU-prefill step calls
     this once per unique miss *serially* in the parent process (not
     divided across worker processes the way the ordinary lazy-miss path
@@ -168,7 +168,7 @@ def extract_patch_window(cube: np.ndarray,
         A pre-computed mask the size of a full frame (cube[0].shape),
         e.g. from an external create_boolean_circular_mask(cube[0].shape,
         ...) call, for API compatibility with callers that pass their own
-        mask (PACO.get_patch's `mask` parameter). Cropped to the same
+        mask (PACOBase.get_patch's `mask` parameter). Cropped to the same
         small window as the cube itself (a cheap O(patch_width^2) slice)
         rather than used for a full-frame boolean index -- if not given,
         a small mask is computed directly at the window's own size.
@@ -182,7 +182,7 @@ def extract_patch_window(cube: np.ndarray,
     k = patch_width // 2
     k2 = k + (patch_width % 2)
     # px arrives as a plain int at most call sites already, but not all
-    # (e.g. PACO.compute_statistics passes phi0s entries directly, which
+    # (e.g. PACOBase.compute_statistics passes phi0s entries directly, which
     # are float64 -- integer-VALUED for the s=1 default, but still a float
     # dtype). The mask-based approach this replaces tolerated a fractional
     # centre implicitly (create_boolean_circular_mask's distance formula

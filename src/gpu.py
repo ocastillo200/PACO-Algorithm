@@ -488,7 +488,7 @@ class GPUStatisticsBatcher:
     total device memory, chunked so a single transfer+compute step never
     tries to hold more than that on the device at once. This is a *separate*
     budget from whatever host-RAM batch sizing the caller already does
-    (e.g. FastPACOv2._calculate_batch_size, FullPACOv2._estimate_cache_capacity)
+    (e.g. FastPACO._calculate_batch_size, PACO._estimate_cache_capacity)
     — a CPU-side batch of pixels can be, and often should be, larger than
     what fits on the GPU at once; this class re-chunks internally rather
     than assuming the two budgets coincide.
@@ -553,7 +553,7 @@ class GPUStatisticsBatcher:
         Compute (m, Cinv) for a full (N, T, K) host-side patch stack,
         chunked to fit the VRAM budget.
 
-        Used by PACO.compute_statistics_gpu (the base/reference Algorithm-1
+        Used by PACOBase.compute_statistics_gpu (the base/reference Algorithm-1
         statistics stage), which needs the full m/Cinv maps for later
         per-trajectory lookups — unlike FastPACO's Stage 1 (see
         compute_stage1_streamed), which only needs a scalar+vector

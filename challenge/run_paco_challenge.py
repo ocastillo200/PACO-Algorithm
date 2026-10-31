@@ -25,8 +25,8 @@ from vip_hci.preproc.rescaling import frame_shift
 from vip_hci.config.utils_conf import iterable, pool_map
 from scipy.ndimage import maximum_filter, label, find_objects, map_coordinates
 
-from src.paco_base import PACO
-from src.fast_paco import FastPACOv2
+from src.paco_base import PACOBase
+from src.fast_paco import FastPACO
 from src.math_utils import compute_statistics_at_pixel, wfl, al, bl
 from src.utils import create_boolean_circular_mask, get_rotated_pixel_coords
 
@@ -144,7 +144,7 @@ def snr_path(inst, idx, variant):
 
 def run_fast_paco(cube, pa, psf, fwhm, pxscale):
     t0 = time.time()
-    fpaco = FastPACOv2(cube, pa, psf, fwhm=fwhm, pixscale=pxscale,
+    fpaco = FastPACO(cube, pa, psf, fwhm=fwhm, pixscale=pxscale,
                        full_output=True, verbose=True)
     snr, flux = fpaco.run(cpu=N_CPU, full_output=True)
     return snr, flux, time.time() - t0
@@ -165,7 +165,7 @@ def run_full_paco_efficient(cube, pa, psf, fwhm, pxscale, patch_radius_dec=0):
     Full PACO without patch pre-storage.
 
     Stage 1 : compute Cinv[y,x] and m[y,x] for all pixels in parallel, using
-              the same full-image circular mask as PACO.get_patch so K matches.
+              the same full-image circular mask as PACOBase.get_patch so K matches.
     Stage 2 : sweep test positions; patches are extracted from the cube at runtime
               using pre-computed relative pixel offsets (consistent with Stage 1).
 
@@ -180,7 +180,7 @@ def run_full_paco_efficient(cube, pa, psf, fwhm, pxscale, patch_radius_dec=0):
     patch_width = int(2 * fwhm) - patch_radius_dec
     half        = patch_width // 2
 
-    # K is defined by a full-image mask (matching PACO.get_patch behaviour).
+    # K is defined by a full-image mask (matching PACOBase.get_patch behaviour).
     # Use image center as reference to count K.
     cy, cx   = H // 2, W // 2
     ref_mask = create_boolean_circular_mask((H, W), radius=half, center=(cy, cx))
@@ -214,7 +214,7 @@ def run_full_paco_efficient(cube, pa, psf, fwhm, pxscale, patch_radius_dec=0):
     xx, yy  = np.meshgrid(x_range, y_range)
     phi0s   = np.column_stack((xx.ravel(), yy.ravel()))  # (W×H, 2) as (row, col)
 
-    _paco = PACO(cube, pa, psf, fwhm=fwhm, pixscale=pxscale,
+    _paco = PACOBase(cube, pa, psf, fwhm=fwhm, pixscale=pxscale,
                  patch_radius_dec=patch_radius_dec, verbose=False)
 
     raw_patches = list(pool_map(N_CPU, _paco.get_patch, iterable(phi0s)))
@@ -322,7 +322,7 @@ def refine_subpixel_peaks(cube, pa, psf, fwhm, pxscale, snr_map,
     "the source location is also improved by testing subpixel locations on
     a refined grid around the location provided by PACO detection").
 
-    `run_full_paco_efficient` (and PACO.run()'s `oversampling` argument)
+    `run_full_paco_efficient` (and PACOBase.run()'s `oversampling` argument)
     only evaluate candidate positions phi0 on the *native* integer pixel
     grid. A real point source whose true position falls between two grid
     nodes is penalised there — Table 2 of [FLA18] quantifies this as up to
@@ -332,7 +332,7 @@ def refine_subpixel_peaks(cube, pa, psf, fwhm, pxscale, snr_map,
 
     This function fixes that specifically for candidates that are already
     close to the threshold (`lower_thresh`) rather than re-running the
-    full field at higher oversampling (which PACO.run(oversampling=s>1)
+    full field at higher oversampling (which PACOBase.run(oversampling=s>1)
     would require, at a cost that scales as s^2): for each local maximum
     of `snr_map` above `lower_thresh`, it re-evaluates the exact PACO
     statistic (Eqs. 15-16) on a fine (`step`-spaced) sub-pixel grid within
@@ -386,7 +386,7 @@ def refine_subpixel_peaks(cube, pa, psf, fwhm, pxscale, snr_map,
 
     if verbose:
         print(f"  [Refine] Stage 1: stats (K={K}) …")
-    _paco = PACO(cube, pa, psf, fwhm=fwhm, pixscale=pxscale,
+    _paco = PACOBase(cube, pa, psf, fwhm=fwhm, pixscale=pxscale,
                  patch_radius_dec=patch_radius_dec, verbose=False)
     stats_cache = {}
 

@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Full-cube, 3-way comparison for FullPACOv2's evolution:
+Full-cube, 3-way comparison for PACO's evolution:
 
   1. ORIGINAL   - the design this session started with: a fresh pool_map()
                   Pool per pixel batch, cross-process Manager().dict() cache
@@ -10,7 +10,7 @@ Full-cube, 3-way comparison for FullPACOv2's evolution:
                   their *input* (native raster) order — no radius grouping.
   3. SHM_RING   - same shared-memory design, but candidates are swept in
                   *radius-ring* order with the cache reset between rings
-                  (src.full_paco.FullPACOv2, the current, real class). This
+                  (src.full_paco.PACO, the current, real class). This
                   is the "innovative" technique: a candidate's trajectory
                   keeps constant radius across all frames (see
                   src/utils.py:get_rotated_pixel_coords), so candidates at
@@ -20,7 +20,7 @@ Full-cube, 3-way comparison for FullPACOv2's evolution:
 
 By default this processes the ENTIRE native pixel grid of the cube (every
 (row, col) in the field of view) as candidate positions — i.e. exactly what
-PACO.run() does for a real detection map, not a subset. "Candidate
+PACOBase.run() does for a real detection map, not a subset. "Candidate
 positions" in PACO *are* the image's pixels: every one of them is tested as
 a possible companion location. Use --npix for a faster partial run (a dense
 block, not random — see _common.make_test_positions for why that matters
@@ -54,8 +54,8 @@ from _common import (arrays_equal, make_arg_parser, make_test_positions,
                      load_dataset_from_args, print_system_info, ResultTable,
                      parse_nproc_list, make_memory_monitor, mem_columns, mem_str)
 
-from src.paco_base import PACO
-from src.full_paco import FullPACOv2
+from src.paco_base import PACOBase
+from src.full_paco import PACO
 from src.math_utils import al, bl, compute_statistics_at_pixel, wfl
 from src.utils import create_boolean_circular_mask, extract_patch_window, get_rotated_pixel_coords
 
@@ -63,7 +63,7 @@ from src.utils import create_boolean_circular_mask, extract_patch_window, get_ro
 # ═════════════════════════════════════════════════════════════════════════
 # 1. ORIGINAL — the design this whole optimization effort started from.
 # ═════════════════════════════════════════════════════════════════════════
-class FullPACOv2_Original(PACO):
+class PACO_Original(PACOBase):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self.precomputed_shifts = {}
@@ -319,7 +319,7 @@ def _g2_process_pixel_worker(args_tuple):
         return i, np.nan, np.nan
 
 
-class FullPACOv2_SharedMemNoRing(PACO):
+class PACO_SharedMemNoRing(PACOBase):
     def __init__(self, *args, cache_memory_fraction=0.25, **kwargs):
         super().__init__(*args, **kwargs)
         self.precomputed_shifts = {}
@@ -490,9 +490,9 @@ def main():
                              "the lost speed while memory stays bounded.")
     parser.add_argument("--use-gpu", dest="use_gpu", action="store_true", default=None,
                         help="Force GPU statistics prefill on for SHM_RING "
-                             "(src.full_paco.FullPACOv2 only -- SHM_NORING's "
+                             "(src.full_paco.PACO only -- SHM_NORING's "
                              "stand-in class never implements this). "
-                             "Default (neither flag given): FullPACOv2's own "
+                             "Default (neither flag given): PACO's own "
                              "default (True if a CUDA device is available).")
     parser.add_argument("--no-gpu", dest="use_gpu", action="store_false",
                         help="Force GPU statistics prefill OFF for SHM_RING. "
@@ -514,7 +514,7 @@ def main():
     fwhm = args.fwhm
     T, H, W = cube.shape
 
-    # Default: EVERY pixel of the field, matching real PACO.run() usage.
+    # Default: EVERY pixel of the field, matching real PACOBase.run() usage.
     if args.npix is None:
         phi0s = make_test_positions(H, W, H * W, sampling="full")
     else:
@@ -534,9 +534,9 @@ def main():
 
     variants = []
     if not args.skip_old:
-        variants.append(("ORIGINAL", FullPACOv2_Original, False))
-    variants.append(("SHM_NORING", FullPACOv2_SharedMemNoRing, True))
-    variants.append(("SHM_RING", FullPACOv2, True))
+        variants.append(("ORIGINAL", PACO_Original, False))
+    variants.append(("SHM_NORING", PACO_SharedMemNoRing, True))
+    variants.append(("SHM_RING", PACO, True))
 
     reference_ab = {}  # nproc -> (a, b) from the first variant run, for correctness
 
@@ -553,13 +553,13 @@ def main():
                   f"(script running {since_start:.1f}s so far)", flush=True)
 
             extra_kwargs = {}
-            if args.cache_memory_fraction is not None and cls is not FullPACOv2_Original:
+            if args.cache_memory_fraction is not None and cls is not PACO_Original:
                 extra_kwargs["cache_memory_fraction"] = args.cache_memory_fraction
-            if args.radius_bin_width is not None and cls is FullPACOv2:
+            if args.radius_bin_width is not None and cls is PACO:
                 extra_kwargs["radius_bin_width"] = args.radius_bin_width
             obj = cls(cube, pa, psf, fwhm=fwhm, verbose=not args.no_progress, **extra_kwargs)
             calc_kwargs = {}
-            if args.use_gpu is not None and cls is FullPACOv2:
+            if args.use_gpu is not None and cls is PACO:
                 calc_kwargs["use_gpu"] = args.use_gpu
             with make_memory_monitor(args) as mon:
                 t0 = time.perf_counter()

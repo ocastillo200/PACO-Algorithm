@@ -5,8 +5,8 @@ NumPy-backed fake `cupy` module -- run this BEFORE touching the server.
 
 This machine has no CUDA device (GPU_AVAILABLE is False here), so the
 entire GPUStatisticsBatcher / GPUBatchDriver code path, and all three of
-its call sites (PACO.compute_statistics_gpu, FastPACOv2 Stage 1,
-FullPACOv2's per-ring GPU cache prefill), had literally never executed
+its call sites (PACOBase.compute_statistics_gpu, FastPACO Stage 1,
+PACO's per-ring GPU cache prefill), had literally never executed
 even once before this script existed -- not even enough to confirm the
 array shapes line up. Faking `cupy` as a thin NumPy wrapper (installed
 into sys.modules before anything imports it) lets that code run for
@@ -40,9 +40,9 @@ import numpy as np  # noqa: E402
 from _common import arrays_equal, make_synthetic_dataset, make_test_positions  # noqa: E402
 
 from src.gpu import GPU_AVAILABLE, GPUBatchDriver  # noqa: E402
-from src.paco_base import PACO  # noqa: E402
-from src.fast_paco import FastPACOv2  # noqa: E402
-from src.full_paco import FullPACOv2  # noqa: E402
+from src.paco_base import PACOBase  # noqa: E402
+from src.fast_paco import FastPACO  # noqa: E402
+from src.full_paco import PACO  # noqa: E402
 
 
 def part1_end_to_end(shape, npix, fwhm, seed):
@@ -54,7 +54,7 @@ def part1_end_to_end(shape, npix, fwhm, seed):
 
     T, H, W = shape
     cube, pa, psf = make_synthetic_dataset(T, H, W, fwhm=fwhm, seed=seed)
-    # PACO.compute_statistics_parallel (the base, non-Fast/Full variant
+    # PACOBase.compute_statistics_parallel (the base, non-Fast/Full variant
     # exercised below) always precomputes statistics for the FULL native
     # grid regardless of phi0s -- so phi0s must cover all H*W positions,
     # same convention as bench_gpu_stats.py's --npix default.
@@ -64,28 +64,28 @@ def part1_end_to_end(shape, npix, fwhm, seed):
 
     all_ok = True
 
-    p_cpu = PACO(cube, pa, psf, fwhm=fwhm, verbose=False)
+    p_cpu = PACOBase(cube, pa, psf, fwhm=fwhm, verbose=False)
     a_cpu, b_cpu = p_cpu.PACOCalc(phi0s, cpu=2, use_gpu=False)
-    p_gpu = PACO(cube, pa, psf, fwhm=fwhm, verbose=False)
+    p_gpu = PACOBase(cube, pa, psf, fwhm=fwhm, verbose=False)
     a_gpu, b_gpu = p_gpu.PACOCalc(phi0s, cpu=2, use_gpu=True)
     ok, detail = arrays_equal(a_cpu, b_cpu, a_gpu, b_gpu)
     print(f"  [PACO/Algorithm1] correct={ok}{detail}")
     all_ok &= ok
 
-    f_cpu = FastPACOv2(cube, pa, psf, fwhm=fwhm, verbose=False)
+    f_cpu = FastPACO(cube, pa, psf, fwhm=fwhm, verbose=False)
     a_cpu2, b_cpu2 = f_cpu.PACOCalc(phi0s, cpu=2, use_gpu=False)
-    f_gpu = FastPACOv2(cube, pa, psf, fwhm=fwhm, verbose=False)
+    f_gpu = FastPACO(cube, pa, psf, fwhm=fwhm, verbose=False)
     a_gpu2, b_gpu2 = f_gpu.PACOCalc(phi0s, cpu=2, use_gpu=True)
     ok2, detail2 = arrays_equal(a_cpu2, b_cpu2, a_gpu2, b_gpu2)
-    print(f"  [FastPACOv2]      correct={ok2}{detail2}")
+    print(f"  [FastPACO]      correct={ok2}{detail2}")
     all_ok &= ok2
 
-    fp_cpu = FullPACOv2(cube, pa, psf, fwhm=fwhm, verbose=False)
+    fp_cpu = PACO(cube, pa, psf, fwhm=fwhm, verbose=False)
     a_cpu3, b_cpu3 = fp_cpu.PACOCalc(phi0s, cpu=2, use_gpu=False)
-    fp_gpu = FullPACOv2(cube, pa, psf, fwhm=fwhm, verbose=False)
+    fp_gpu = PACO(cube, pa, psf, fwhm=fwhm, verbose=False)
     a_gpu3, b_gpu3 = fp_gpu.PACOCalc(phi0s, cpu=2, use_gpu=True)
     ok3, detail3 = arrays_equal(a_cpu3, b_cpu3, a_gpu3, b_gpu3)
-    print(f"  [FullPACOv2]      correct={ok3}{detail3}")
+    print(f"  [PACO]      correct={ok3}{detail3}")
     all_ok &= ok3
 
     # Deliberately tiny fake VRAM: forces batch_size down to a handful of
@@ -93,10 +93,10 @@ def part1_end_to_end(shape, npix, fwhm, seed):
     # compute_stats_streamed/compute_stage1_streamed (a single-chunk run
     # at generous VRAM would never touch that loop more than once).
     fake_cupy.install(free_bytes=1 * 1024**2)  # 1 MiB "VRAM"
-    fp_gpu_tiny = FullPACOv2(cube, pa, psf, fwhm=fwhm, verbose=False)
+    fp_gpu_tiny = PACO(cube, pa, psf, fwhm=fwhm, verbose=False)
     a_tiny, b_tiny = fp_gpu_tiny.PACOCalc(phi0s, cpu=2, use_gpu=True)
     ok4, detail4 = arrays_equal(a_cpu3, b_cpu3, a_tiny, b_tiny)
-    print(f"  [FullPACOv2, tiny fake VRAM, forces many small chunks] "
+    print(f"  [PACO, tiny fake VRAM, forces many small chunks] "
           f"correct={ok4}{detail4}")
     all_ok &= ok4
     fake_cupy.install()  # restore generous default for anything after this

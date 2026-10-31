@@ -1,5 +1,5 @@
 """
-FastPACOv2: batch-processing PACO variant with spatial interpolation.
+FastPACO: batch-processing PACO variant with spatial interpolation.
 
 Uses pre-computed c and d maps (Stage 1) then interpolates them at each
 rotated test position (Stage 2), enabling vectorised processing.
@@ -15,7 +15,7 @@ from vip_hci.fm import normalize_psf
 
 from .gpu import GPU_AVAILABLE
 from .math_utils import compute_statistics_at_pixel
-from .paco_base import PACO
+from .paco_base import PACOBase, deprecated_alias
 from .utils import create_boolean_circular_mask, extract_patch_window, get_rotated_pixel_coords
 
 # ---------------------------------------------------------------------------
@@ -39,8 +39,8 @@ _G: dict = {}
 
 
 def _g_get_patch(p0: Tuple[int, int]) -> np.ndarray:
-    """Module-level equivalent of PACO.get_patch, reading globals set by
-    _set_stage1_globals(). Must stay logically identical to PACO.get_patch.
+    """Module-level equivalent of PACOBase.get_patch, reading globals set by
+    _set_stage1_globals(). Must stay logically identical to PACOBase.get_patch.
     See utils.extract_patch_window for why this is a small windowed
     extraction rather than a full-frame-mask boolean index."""
     return extract_patch_window(_G["cube"], p0, _G["patch_width"], _G["patch_area"])
@@ -91,7 +91,7 @@ def _stage2_worker(args: tuple) -> Tuple[Optional[int], float, float]:
         return i, np.nan, np.nan
 
 
-class FastPACOv2(PACO):
+class FastPACO(PACOBase):
     """
     Memory-efficient PACO implementation based on batch processing and
     spatial interpolation of pre-computed statistics maps.
@@ -132,10 +132,10 @@ class FastPACOv2(PACO):
             wall time for a large cube — separate from any GPU use for PSF
             shifting elsewhere in this codebase.
         gpu_memory_fraction : float, optional
-            Overrides `self.gpu_memory_fraction` (see PACO.__init__) for
+            Overrides `self.gpu_memory_fraction` (see PACOBase.__init__) for
             this call's GPUStatisticsBatcher.
         memory_threshold_gb : float, optional
-            Deprecated; use `memory_fraction` (see PACO.__init__), which
+            Deprecated; use `memory_fraction` (see PACOBase.__init__), which
             sets the RAM budget for batch sizing. If given, it overrides
             that budget (in GiB) for this call.
 
@@ -178,7 +178,7 @@ class FastPACOv2(PACO):
         # never recomputed per candidate. Using `phi0s` directly for Stage 1
         # (as an earlier version of this method did) is only correct when
         # phi0s happens to equal the native grid, i.e. oversampling=1;
-        # for oversampling>1, PACO.run() passes a LARGER, finer candidate
+        # for oversampling>1, PACOBase.run() passes a LARGER, finer candidate
         # grid, and reshaping Stage 1's per-candidate results into the
         # native (W, H) c_map/d_map shape then raises a ValueError (a
         # crash, not a silent wrong answer -- confirmed empirically) since
@@ -366,3 +366,7 @@ class FastPACOv2(PACO):
         """Yield successive slices of data of length batch_size."""
         for i in range(0, len(data), batch_size):
             yield data[i:i + batch_size]
+
+
+# Former class name (placeholder from development).
+FastPACOv2 = deprecated_alias(FastPACO, "FastPACOv2")

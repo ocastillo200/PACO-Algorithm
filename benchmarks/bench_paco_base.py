@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Benchmark + correctness check: PACO.compute_statistics_parallel original
+Benchmark + correctness check: PACOBase.compute_statistics_parallel original
 design (two separate pool_map() Pools: get_patch, then
 compute_statistics_at_pixel) vs the current fused single-Pool design
 (src.paco_base.PACO).
@@ -20,7 +20,7 @@ from vip_hci.config.utils_conf import iterable, pool_map
 from _common import (arrays_equal, make_arg_parser, make_test_positions,
                      load_dataset_from_args, print_system_info, ResultTable)
 
-from src.paco_base import PACO
+from src.paco_base import PACOBase
 from src.math_utils import compute_statistics_at_pixel
 from src.utils import create_boolean_circular_mask
 
@@ -69,8 +69,8 @@ def main():
     table = ResultTable(["nproc", "old_s", "new_s", "speedup", "verdict"])
 
     for nproc in nprocs:
-        paco_old = PACO(cube, pa, psf, fwhm=fwhm, verbose=False)
-        paco_new = PACO(cube, pa, psf, fwhm=fwhm, verbose=False)
+        paco_old = PACOBase(cube, pa, psf, fwhm=fwhm, verbose=False)
+        paco_new = PACOBase(cube, pa, psf, fwhm=fwhm, verbose=False)
 
         t0 = time.perf_counter()
         old_stats = old_run(paco_old, phi0s, nproc)

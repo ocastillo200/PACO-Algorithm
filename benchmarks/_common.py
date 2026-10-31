@@ -699,7 +699,7 @@ def make_test_positions(H: int, W: int, npix: int, seed: int = 0,
       "dense"  (default) - a contiguous square block centered on the image,
                 sized to ~npix positions. Representative of a real
                 full-field sweep's *local density* per radius ring — this
-                is what FullPACOv2's radius-ring cache-sharing optimization
+                is what PACO's radius-ring cache-sharing optimization
                 actually benefits from. Measured on sph3: a 1600-position
                 dense block gave 2.43x speedup vs the original design,
                 while an equally-sized *random* scatter only gave ~1.1x,

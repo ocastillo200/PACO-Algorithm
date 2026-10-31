@@ -8,6 +8,7 @@ import multiprocessing
 import os
 import sys
 import time
+import warnings
 from typing import Callable, Dict, Generator, List, Literal, Optional, Tuple, Union
 
 import numpy as np
@@ -31,7 +32,7 @@ from .utils import create_boolean_circular_mask, extract_patch_window, get_rotat
 # Pickling a bound method pickles the whole instance `self` (including
 # self.cube) per chunk, and the intermediate raw-patch list was serialised
 # twice (once out of the first Pool, once into the second) — the same
-# pattern that, for FastPACOv2/FullPACOv2, measured as a real bottleneck
+# pattern that, for FastPACO/PACO, measured as a real bottleneck
 # once fixed (see those modules' docstrings for the full history and
 # measurements). Fix: a single module-level worker, fused (patch extraction
 # + statistics in one call), reading the cube from a global set in the
@@ -42,7 +43,7 @@ _G: dict = {}
 
 
 def _g_get_patch(px: Tuple[int, int]) -> np.ndarray:
-    """Module-level equivalent of PACO.get_patch, reading globals. See
+    """Module-level equivalent of PACOBase.get_patch, reading globals. See
     utils.extract_patch_window for why this is a small windowed extraction
     rather than a full-frame-mask boolean index."""
     return extract_patch_window(_G["cube"], px, _G["patch_width"], _G["patch_area"])
@@ -118,7 +119,18 @@ def cgroup_memory_headroom(proc_root: str = "/proc",
     return min(candidates) if candidates else None
 
 
-class PACO:
+def deprecated_alias(cls, old_name):
+    """Subclass of cls under its former name, warning on instantiation, so
+    code written against the old class names keeps working."""
+    def __init__(self, *args, **kwargs):
+        warnings.warn(f"{old_name} is deprecated; use {cls.__name__} instead.",
+                      DeprecationWarning, stacklevel=2)
+        cls.__init__(self, *args, **kwargs)
+    return type(old_name, (cls,), {"__init__": __init__, "__module__": cls.__module__,
+                                  "__doc__": f"Deprecated alias of :class:`{cls.__name__}`."})
+
+
+class PACOBase:
     """
     Base class for the PACO family of algorithms (Flasseur et al. 2018).
 
@@ -183,8 +195,8 @@ class PACO:
         memory_fraction : float
             Fraction of the host RAM that is *available* when a run starts
             (psutil.virtual_memory().available) that the run may use. This
-            is the single RAM budget: every large allocation (FullPACOv2's
-            shared statistics cache and sweep batches, FastPACOv2's Stage 1
+            is the single RAM budget: every large allocation (PACO's
+            shared statistics cache and sweep batches, FastPACO's Stage 1
             batches) is sized from it, so the field size changes the run
             time, not whether the run fits. Lower it on a machine shared
             with other jobs. Must be in (0, 1].
@@ -508,7 +520,7 @@ class PACO:
             angles_px = get_rotated_pixel_coords(x, y, p0, self.angles)
             # angles_px[:, 0] = col coords, angles_px[:, 1] = row coords.
             # Statistics are taken at the nearest pixel of each trajectory
-            # point (Flasseur et al. 2018, Table 1), as in FullPACOv2.
+            # point (Flasseur et al. 2018, Table 1), as in PACO.
             nearest = np.round(angles_px).astype(int)
             if (np.any(nearest[:, 0] < 0) or np.any(nearest[:, 0] >= self.width) or
                     np.any(nearest[:, 1] < 0) or np.any(nearest[:, 1] >= self.height)):
@@ -687,7 +699,7 @@ class PACO:
             Worker processes for the CPU-side patch-extraction stage.
         gpu_memory_fraction : float, optional
             Overrides `self.gpu_memory_fraction` for this call (see
-            PACO.__init__).
+            PACOBase.__init__).
 
         Returns
         -------

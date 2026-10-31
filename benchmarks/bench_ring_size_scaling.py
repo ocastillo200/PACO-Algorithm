@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Wall time and peak memory vs. dataset size for FullPACOv2 (radius-ring
+Wall time and peak memory vs. dataset size for PACO (radius-ring
 traversal, the production architecture), at a FIXED worker-process count.
 This is the "pure dataset-size" experiment: nproc is held constant so the
 only thing varying across rows is problem size, which keeps the time/
@@ -52,7 +52,7 @@ Usage
         --csv ring_size_scaling.csv
 
 Runtime note: this is len(spatial-sizes)+len(frame-counts)-1 shapes (the
-baseline is shared, de-duplicated) times len(nproc) FullPACOv2 runs. At
+baseline is shared, de-duplicated) times len(nproc) PACO runs. At
 default settings with a single --nproc value that is 8 runs; a single
 run on a large shape can itself take many minutes. --dry-run prints the
 planned grid and exits without running anything.
@@ -65,7 +65,7 @@ from _common import (arrays_equal, make_synthetic_dataset, make_test_positions,
                      parse_nproc_list, print_system_info, ResultTable,
                      make_memory_monitor, mem_columns, mem_str)
 
-from src.full_paco import FullPACOv2
+from src.full_paco import PACO
 
 
 def parse_shape_list(arg: str, dim_index: int, base_shape):
@@ -217,7 +217,7 @@ def main():
                   f"(script running {elapsed_script/60:.1f} min so far)",
                   flush=True)
 
-            obj = FullPACOv2(cube, pa, psf, fwhm=args.fwhm, verbose=False)
+            obj = PACO(cube, pa, psf, fwhm=args.fwhm, verbose=False)
             with make_memory_monitor(args) as mon:
                 t0 = time.perf_counter()
                 a, b = obj.PACOCalc(phi0s, cpu=nproc, **calc_kwargs)

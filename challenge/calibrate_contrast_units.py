@@ -4,7 +4,7 @@ Empirical calibration: inject ONE known-contrast companion directly (not
 through vip_hci.metrics.contrast_curve's automatic fc_snr*noise sizing,
 which turned out to size the injection nonsensically for our flux map's
 scale -- see make_contrast_curve_sph3.py's run: throughput/sensitivity
-came back all-NaN), recover it with FullPACOv2, and measure the actual
+came back all-NaN), recover it with PACO, and measure the actual
 ratio between recovered alpha and the known injected contrast. This
 replaces the analytical unit derivation in make_contrast_curve_sph3.py's
 docstring with a direct empirical check, since the derivation's
@@ -30,7 +30,7 @@ from vip_hci.fm import cube_inject_companions, normalize_psf
 from vip_hci.metrics import aperture_flux
 from vip_hci.var import frame_center
 
-from src.full_paco import FullPACOv2
+from src.full_paco import PACO
 from challenge.make_contrast_curve_sph3 import load_sph3, compute_fwhm
 
 
@@ -68,12 +68,12 @@ def main():
     print(f"Injected at (y,x) = ({y_inj:.2f}, {x_inj:.2f}), fwhm={fwhm:.3f}")
 
     t0 = time.time()
-    obj_nofc = FullPACOv2(cube, pa, psf, fwhm=fwhm, pixscale=pxscale, verbose=False)
+    obj_nofc = PACO(cube, pa, psf, fwhm=fwhm, pixscale=pxscale, verbose=False)
     snr0, flux0 = obj_nofc.run(cpu=args.cpu, use_gpu=False, full_output=True)
     print(f"no-fc run: {time.time() - t0:.1f}s (cpu={args.cpu})")
 
     t0 = time.time()
-    obj_fc = FullPACOv2(cube_inj, pa, psf, fwhm=fwhm, pixscale=pxscale, verbose=False)
+    obj_fc = PACO(cube_inj, pa, psf, fwhm=fwhm, pixscale=pxscale, verbose=False)
     snr1, flux1 = obj_fc.run(cpu=args.cpu, use_gpu=False, full_output=True)
     print(f"fc run: {time.time() - t0:.1f}s (cpu={args.cpu})")
 

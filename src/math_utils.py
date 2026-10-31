@@ -99,13 +99,13 @@ def compute_statistics_batch(patches: Union[np.ndarray, "cp.ndarray"],
     m : array, shape (N, K)
     Cinv : array, shape (N, K, K)
         Rows corresponding to a patch containing ANY NaN (out-of-bounds
-        edge pixels, see PACO.get_patch) are filled with NaN, matching
+        edge pixels, see PACOBase.get_patch) are filled with NaN, matching
         compute_statistics_at_pixel's None-for-invalid convention pixel by
         pixel (an all-finite patch there always implies an all-finite (m,
         Cinv); a patch with any NaN there always propagates to a NaN mean/
         covariance — so "any NaN in the patch" and "invalid" are exactly
         equivalent for every input compute_statistics_at_pixel is actually
-        called with in this codebase, i.e. output of PACO.get_patch, which
+        called with in this codebase, i.e. output of PACOBase.get_patch, which
         never returns a *partially* NaN patch).
     """
     xp = cp if use_gpu and GPU_AVAILABLE else np

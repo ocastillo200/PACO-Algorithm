@@ -34,8 +34,8 @@ from vip_hci.fm import normalize_psf
 from vip_hci.config.utils_conf import iterable, pool_map
 from scipy.ndimage import map_coordinates
 
-from src.paco_base import PACO
-from src.fast_paco import FastPACOv2
+from src.paco_base import PACOBase
+from src.fast_paco import FastPACO
 from src.math_utils import compute_statistics_at_pixel, wfl, al, bl
 from src.utils import create_boolean_circular_mask, get_rotated_pixel_coords
 
@@ -110,7 +110,7 @@ def compute_fwhm(psf):
 
 def run_fast_paco(cube, pa, psf, fwhm, pxscale):
     t0 = time.time()
-    fpaco = FastPACOv2(cube, pa, psf, fwhm=fwhm, pixscale=pxscale,
+    fpaco = FastPACO(cube, pa, psf, fwhm=fwhm, pixscale=pxscale,
                        full_output=True, verbose=True)
     snr, flux = fpaco.run(cpu=N_CPU, full_output=True)
     return snr, flux, time.time() - t0
@@ -152,7 +152,7 @@ def run_full_paco_efficient(cube, pa, psf, fwhm, pxscale, patch_radius_dec=0):
     xx, yy = np.meshgrid(x_range, y_range)
     phi0s = np.column_stack((xx.ravel(), yy.ravel()))
 
-    _paco = PACO(cube, pa, psf, fwhm=fwhm, pixscale=pxscale,
+    _paco = PACOBase(cube, pa, psf, fwhm=fwhm, pixscale=pxscale,
                 patch_radius_dec=patch_radius_dec, verbose=False)
 
     raw_patches = list(pool_map(N_CPU, _paco.get_patch, iterable(phi0s)))

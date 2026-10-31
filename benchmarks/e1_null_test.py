@@ -25,8 +25,8 @@ Two parts:
    the 2-row stack (p, m)), hence C^-1 x2 and S/N inflated by sqrt(2).
    This checks that prediction directly, independent of the full runs.
 
-2. Null runs (minutes per map): FullPACOv2 (production, ring traversal),
-   FastPACOv2, and VIP FastPACO (convention A of the appendix: fwhm in px,
+2. Null runs (minutes per map): PACO (production, ring traversal),
+   FastPACO, and VIP FastPACO (convention A of the appendix: fwhm in px,
    pixscale=1.0 -- same K=29 patch as ours), all on the sign-reversed sph3
    cube. Reports mean, std, robust std (1.4826*MAD), skewness, excess
    kurtosis, tail fractions vs the Gaussian expectation, and the KS
@@ -65,8 +65,8 @@ import numpy as np
 from scipy import stats
 
 from challenge.make_contrast_curve_sph3 import load_sph3, compute_fwhm
-from src.fast_paco import FastPACOv2
-from src.full_paco import FullPACOv2
+from src.fast_paco import FastPACO
+from src.full_paco import PACO
 from src.math_utils import compute_statistics_at_pixel
 from src.utils import create_boolean_circular_mask
 
@@ -175,6 +175,11 @@ def check_covariance(cube, fwhm, n_pixels=200, seed=0):
 # ---------------------------------------------------------------------------
 
 def null_angles(pa, mode):
+    if mode == "roll":
+        # Cyclic shift by half the sequence: same rotation amplitude and
+        # temporal order, and no source (real or injected) follows a PACO
+        # trajectory. See benchmarks/review_experiments.py for many shifts.
+        return np.roll(pa, len(pa) // 2)
     if mode == "reverse":
         return -pa
     if mode == "scale30":
@@ -183,12 +188,12 @@ def null_angles(pa, mode):
 
 
 def run_ours_full(cube, pa, psf, fwhm, pxs, cpu):
-    obj = FullPACOv2(cube, pa, psf, fwhm=fwhm, pixscale=pxs, verbose=False)
+    obj = PACO(cube, pa, psf, fwhm=fwhm, pixscale=pxs, verbose=False)
     return obj.run(cpu=cpu)
 
 
 def run_ours_fast(cube, pa, psf, fwhm, pxs, cpu):
-    obj = FastPACOv2(cube, pa, psf, fwhm=fwhm, pixscale=pxs, verbose=False)
+    obj = FastPACO(cube, pa, psf, fwhm=fwhm, pixscale=pxs, verbose=False)
     return obj.run(cpu=cpu)
 
 
@@ -203,8 +208,8 @@ def run_vip_fast(cube, pa, psf, fwhm, pxs, cpu):
 
 
 RUNNERS = {
-    "ours_full": ("FullPACOv2 (this work)", run_ours_full),
-    "ours_fast": ("FastPACOv2 (this work)", run_ours_fast),
+    "ours_full": ("PACO (this work)", run_ours_full),
+    "ours_fast": ("FastPACO (this work)", run_ours_fast),
     "vip_fast": ("VIP FastPACO", run_vip_fast),
 }
 
@@ -321,9 +326,10 @@ def main():
     ap = argparse.ArgumentParser(description=__doc__,
                                  formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--cpu", type=int, default=4)
-    ap.add_argument("--null", choices=["reverse", "scale30"], default="reverse",
+    ap.add_argument("--null", choices=["roll", "reverse", "scale30"], default="roll",
                     help="How to build the companion-free cube (default: "
-                         "sign-reversed parallactic angles).")
+                         "angles rolled by half the sequence; `reverse` may "
+                         "realign real sources in EIDC data).")
     ap.add_argument("--check-covariance", action="store_true",
                     help="Only run the fast C^-1 / rho comparison and exit.")
     ap.add_argument("--only", nargs="+", choices=list(RUNNERS),

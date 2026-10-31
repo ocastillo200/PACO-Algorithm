@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 """
-Benchmark + correctness check: FullPACOv2 original design (fresh pool_map()
+Benchmark + correctness check: PACO original design (fresh pool_map()
 Pool per pixel batch, cross-process Manager().dict() cache storing full
-arrays) vs the current shared-memory design (src.full_paco.FullPACOv2).
+arrays) vs the current shared-memory design (src.full_paco.PACO).
 
 Usage
 -----
@@ -15,7 +15,7 @@ Always verifies a/b outputs are numerically identical (within float
 tolerance) between OLD and NEW before trusting any timing number — a
 faster-but-wrong result is worthless.
 
-FullPACOv2's whole reason to exist is handling cases where precomputing
+PACO's whole reason to exist is handling cases where precomputing
 statistics for *every* pixel is too much memory (e.g. NIRC2-scale K); use
 --shape/--fwhm to explore that regime (larger K = bigger patches = the
 scenario this class targets) as well as large-T scalability (LMIRCam-scale).
@@ -28,18 +28,18 @@ import numpy as np
 from _common import (arrays_equal, make_arg_parser, make_test_positions,
                      load_dataset_from_args, print_system_info, ResultTable)
 
-from src.paco_base import PACO
-from src.full_paco import FullPACOv2
+from src.paco_base import PACOBase
+from src.full_paco import PACO
 from src.math_utils import al, bl, compute_statistics_at_pixel, wfl
 from src.utils import create_boolean_circular_mask, get_rotated_pixel_coords
 
 
 # ═════════════════════════════════════════════════════════════════════════
-# Original FullPACOv2 design, preserved here for comparison since it no
+# Original PACO design, preserved here for comparison since it no
 # longer exists in src/full_paco.py (see that file's module docstring for
 # the full history of intermediate designs and why each one was replaced).
 # ═════════════════════════════════════════════════════════════════════════
-class FullPACOv2_Original(PACO):
+class PACO_Original(PACOBase):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self.precomputed_shifts = {}
@@ -185,8 +185,8 @@ def main():
     table = ResultTable(["nproc", "old_s", "new_s", "speedup", "verdict", "correct"])
 
     for nproc in nprocs:
-        old = FullPACOv2_Original(cube, pa, psf, fwhm=fwhm, verbose=False)
-        new = FullPACOv2(cube, pa, psf, fwhm=fwhm, verbose=False)
+        old = PACO_Original(cube, pa, psf, fwhm=fwhm, verbose=False)
+        new = PACO(cube, pa, psf, fwhm=fwhm, verbose=False)
 
         t0 = time.perf_counter()
         a_old, b_old = old.PACOCalc(phi0s, cpu=nproc)

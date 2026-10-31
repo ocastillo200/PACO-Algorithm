@@ -24,7 +24,7 @@ Memory accounting:
 For each limit L, runs (each in its own child process):
   - VIP FastPACO (vip_hci.invprob.paco), fwhm in px, pixscale=1.0 (same
     patch as ours, as in Appendix B),
-  - our FullPACOv2 and FastPACOv2, given a budget of `--budget-share` x L
+  - our PACO and FastPACO, given a budget of `--budget-share` x L
     through memory_fraction (the rest of L is left for the interpreter, the
     cube and the worker processes).
 Our S/N maps are compared bit-for-bit with an unconstrained run of the same
@@ -63,8 +63,8 @@ import psutil
 OUT_DIR = os.path.join(ROOT, "challenge", "outputs", "e9_memory")
 GiB = 1024 ** 3
 METHODS = ["vip_fast", "ours_full", "ours_fast"]
-LABELS = {"vip_fast": "VIP FastPACO", "ours_full": "FullPACOv2 (this work)",
-          "ours_fast": "FastPACOv2 (this work)"}
+LABELS = {"vip_fast": "VIP FastPACO", "ours_full": "PACO (this work)",
+          "ours_fast": "FastPACO (this work)"}
 
 
 # ---------------------------------------------------------------------------
@@ -105,9 +105,9 @@ def worker(args):
         t0 = time.perf_counter()
         snr, _flux = obj.run(cpu=args.cpu)
     else:
-        from src.fast_paco import FastPACOv2
-        from src.full_paco import FullPACOv2
-        cls = FullPACOv2 if args.method == "ours_full" else FastPACOv2
+        from src.fast_paco import FastPACO
+        from src.full_paco import PACO
+        cls = PACO if args.method == "ours_full" else FastPACO
         kwargs = {}
         if args.budget_gb is not None:
             avail = psutil.virtual_memory().available

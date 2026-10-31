@@ -1,5 +1,5 @@
 """
-FullPACOv2: per-pixel caching PACO variant with optional GPU pre-processing.
+PACO: per-pixel caching PACO variant with optional GPU pre-processing.
 
 Computes background statistics on demand for each rotated patch position
 and caches them to avoid redundant computation across test pixels that
@@ -18,7 +18,7 @@ from vip_hci.preproc.rescaling import frame_shift
 
 from .gpu import GPU_AVAILABLE, GPUFrameShifter
 from .math_utils import al, bl, compute_statistics_at_pixel, wfl
-from .paco_base import PACO
+from .paco_base import PACOBase, deprecated_alias
 from .utils import create_boolean_circular_mask, extract_patch_window, get_rotated_pixel_coords
 
 # ---------------------------------------------------------------------------
@@ -36,7 +36,7 @@ from .utils import create_boolean_circular_mask, extract_patch_window, get_rotat
 #
 # 2. Module-level functions + a plain per-worker-LOCAL cache dict (fork
 #    copy-on-write, no cross-process sharing). Removed the self-pickling
-#    cost, but FullPACOv2's whole design leans on *many* different candidate
+#    cost, but PACO's whole design leans on *many* different candidate
 #    trajectories revisiting the *same* background pixels — losing that
 #    sharing made every worker redundantly recompute shared pixels. Measured
 #    regression: 0.74x-1.00x across nproc=2..6, worse at higher nproc.
@@ -58,16 +58,16 @@ from .utils import create_boolean_circular_mask, extract_patch_window, get_rotat
 #    re-attachment needed, writes in one worker are immediately visible to
 #    the others and to the parent.
 #
-# Capacity is bounded (see _estimate_cache_capacity): FullPACOv2 exists
+# Capacity is bounded (see _estimate_cache_capacity): PACO exists
 # specifically for cases where precomputing statistics for *every* pixel
-# (as PACO.compute_statistics_parallel does) is too much memory (e.g. NIRC2,
+# (as PACOBase.compute_statistics_parallel does) is too much memory (e.g. NIRC2,
 # K=197: an H*W*K*K array would be ~322 GB). Once the pool is full, further
 # misses are computed but not cached (correct, just uncached) rather than
 # growing without bound.
 # ---------------------------------------------------------------------------
 _G: dict = {}
 
-# Share of the run's RAM budget (PACO.memory_fraction of available RAM)
+# Share of the run's RAM budget (PACOBase.memory_fraction of available RAM)
 # given to the shared statistics cache; the sweep batches get what the
 # cache actually leaves. 0.3 reproduces the previous default split
 # (cache 0.25 / batches 0.65 of available RAM, i.e. ~0.28 of their sum).
@@ -75,7 +75,7 @@ CACHE_BUDGET_SHARE = 0.3
 
 
 def _g_get_patch(p0: Tuple[int, int]) -> np.ndarray:
-    """Module-level equivalent of PACO.get_patch, reading globals. See
+    """Module-level equivalent of PACOBase.get_patch, reading globals. See
     utils.extract_patch_window for why this is a small windowed extraction
     rather than a full-frame-mask boolean index."""
     return extract_patch_window(_G["cube"], p0, _G["patch_width"], _G["patch_area"])
@@ -266,7 +266,7 @@ def _process_pixel_worker(args_tuple: tuple) -> Tuple[int, float, float]:
         return i, np.nan, np.nan
 
 
-class FullPACOv2(PACO):
+class PACO(PACOBase):
     """
     PACO variant that computes and caches background statistics per pixel
     during the main detection sweep, rather than pre-computing them globally.
@@ -284,7 +284,7 @@ class FullPACOv2(PACO):
         Parameters
         ----------
         cache_memory_fraction : float, optional
-            Deprecated; use `memory_fraction` (see PACO.__init__), from which
+            Deprecated; use `memory_fraction` (see PACOBase.__init__), from which
             the cache budget is derived (CACHE_BUDGET_SHARE of it). Kept so
             that existing benchmark scripts still run: if given, the cache
             pool is sized to this fraction of *available* RAM, as before,
@@ -299,7 +299,7 @@ class FullPACOv2(PACO):
             PACOCalc(..., radius_bin_width=...).
 
         Also accepts `gpu_memory_fraction` via **kwargs (forwarded to
-        PACO.__init__, which stores it as `self.gpu_memory_fraction`) --
+        PACOBase.__init__, which stores it as `self.gpu_memory_fraction`) --
         the VRAM analogue of `memory_fraction`, consumed by
         `_gpu_prefill_ring_cache`.
         """
@@ -353,7 +353,7 @@ class FullPACOv2(PACO):
         radius_bin_width : float, optional
             Overrides `self.radius_bin_width` for this call.
         gpu_memory_fraction : float, optional
-            Overrides `self.gpu_memory_fraction` (see PACO.__init__) for
+            Overrides `self.gpu_memory_fraction` (see PACOBase.__init__) for
             this call's per-ring GPU cache prefill.
 
         Returns
@@ -891,3 +891,7 @@ class FullPACOv2(PACO):
                 cupy.get_default_memory_pool().free_all_blocks()
             except Exception:
                 pass
+
+
+# Former class name (placeholder from development).
+FullPACOv2 = deprecated_alias(PACO, "FullPACOv2")
