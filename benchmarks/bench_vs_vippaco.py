@@ -86,6 +86,11 @@ def main():
                              "reports the median, min and max time.")
     parser.add_argument("--skip-vip", action="store_true",
                         help="Time only our two implementations.")
+    parser.add_argument("--impls", default="full,fast,vip",
+                        help="Comma-separated subset of full,fast,vip. Run one "
+                             "implementation per invocation to measure its "
+                             "memory in a fresh process, unaffected by the "
+                             "heap the others leave in the parent.")
     args = parser.parse_args()
     print_system_info()
 
@@ -143,9 +148,12 @@ def main():
         obj.PACOCalc(phi0s_vip, cpu=nproc)
         return obj.patch_area_pixels
 
-    impls = [("OURS_FullPACOv2", run_ours_full), ("OURS_FastPACOv2", run_ours_fast)]
-    if not args.skip_vip:
-        impls.append(("VIP_FastPACO", run_vip))
+    chosen = set(args.impls.split(","))
+    if args.skip_vip:
+        chosen.discard("vip")
+    impls = [(n, f) for k, n, f in (("full", "OURS_FullPACOv2", run_ours_full),
+                                    ("fast", "OURS_FastPACOv2", run_ours_fast),
+                                    ("vip", "VIP_FastPACO", run_vip)) if k in chosen]
 
     times = {}
     for nproc in nprocs:
@@ -170,7 +178,7 @@ def main():
     print("\n=== Summary: median [min, max] wall time (s) ===")
     names = [n for n, _ in impls]
     print(f"{'nproc':>6}  " + "".join(f"{n:>30}" for n in names)
-          + ("   VIP/ours-Full  VIP/ours-Fast" if "VIP_FastPACO" in names else ""))
+          + ("   VIP/ours-Full  VIP/ours-Fast" if len(names) == 3 else ""))
     for nproc in nprocs:
         cells, med = [], {}
         for n in names:
@@ -178,7 +186,7 @@ def main():
             med[n] = statistics.median(ts)
             cells.append(f"{med[n]:10.2f} [{min(ts):.2f}, {max(ts):.2f}]".rjust(30))
         line = f"{nproc:>6}  " + "".join(cells)
-        if "VIP_FastPACO" in names:
+        if {"VIP_FastPACO", "OURS_FullPACOv2", "OURS_FastPACOv2"} <= set(names):
             line += (f"   {med['VIP_FastPACO'] / med['OURS_FullPACOv2']:13.1f}"
                      f"  {med['VIP_FastPACO'] / med['OURS_FastPACOv2']:13.1f}")
         print(line)

@@ -190,7 +190,9 @@ def _process_pixel_worker(args_tuple: tuple) -> Tuple[int, float, float]:
     Returns
     -------
     tuple
-        (pixel_index, a_val, b_val). Returns (index, nan, nan) on error.
+        (pixel_index, a_val, b_val); (index, nan, nan) for candidates
+        whose trajectory leaves the field or meets invalid statistics.
+        Any other error is raised.
     """
     i, p0, precomputed_pixel_data = args_tuple
 
@@ -264,8 +266,10 @@ def _process_pixel_worker(args_tuple: tuple) -> Tuple[int, float, float]:
 
         return i, a_val, b_val
 
-    except Exception:
-        return i, np.nan, np.nan
+    except Exception as exc:
+        # Fail loudly: a silent NaN would be indistinguishable from an
+        # out-of-field candidate.
+        raise RuntimeError(f"candidate {i} at {tuple(p0)} failed: {exc!r}") from exc
 
 
 class PACO(PACOBase):
@@ -328,13 +332,15 @@ class PACO(PACOBase):
         Candidates are swept in *radius-ring order*, not input order. A
         candidate's trajectory (see get_rotated_pixel_coords) keeps its
         polar radius exactly constant across all T frames — only the angle
-        rotates — so two candidates at different radii can never touch the
-        same background pixel, while candidates at the same radius share
-        many of them. Grouping the sweep by radius bin therefore (a)
+        rotates — so candidates at the same radius share most of their
+        background pixels, while candidates at distant radii share none.
+        Rounding to the nearest pixel means adjacent rings do share some
+        pixels (58% of them are used by two rings on sph3), which are recomputed
+        after the reset. Grouping the sweep by radius bin therefore (a)
         maximises the shared-cache hit rate within a bin, and (b) lets the
-        cache be reset to empty between bins (a completed bin's background
-        pixels are provably never needed again), bounding the *effective*
-        working set to one ring instead of the whole image. This does NOT
+        cache be reset to empty between bins, at the cost of those
+        recomputations, bounding the *effective* working set to one ring
+        instead of the whole image. This does NOT
         change *which* pixels are processed or their individual results —
         only the order, and hence the caching behaviour — and coverage of
         every input position is verified below (see `_covered` assertion).
@@ -517,11 +523,11 @@ class PACO(PACOBase):
                 ring_orig_idx = order[ring_start:ring_end]
                 ring_phi0s = phi0s[ring_orig_idx]
 
-                # A completed ring's background pixels are provably never
-                # revisited by any other ring (constant-radius trajectories,
-                # see docstring) — reset the cache so the *next* ring starts
-                # from a clean, small working set instead of accumulating
-                # entries from every ring processed so far.
+                # Reset the cache between rings so the working set stays at
+                # one ring's pixels instead of accumulating every ring's.
+                # Pixels shared with the next ring (nearest-pixel rounding,
+                # see docstring) are recomputed: a time cost, never a
+                # change in the result.
                 if not first_ring:
                     if pool is not None:
                         _G["slot_map"].fill(-1)

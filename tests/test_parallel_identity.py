@@ -95,6 +95,47 @@ def test_small_dev_shm_shrinks_cache_not_result():
     finally:
         fp.shm_headroom = orig
 
+def _paco_ab(cpu, **kw):
+    cube, pa, psf = _data()
+    init = {k: kw.pop(k) for k in ("memory_fraction",) if k in kw}
+    obj = PACO(cube, pa, psf, fwhm=FWHM, pixscale=1.0, verbose=False, **init)
+    N = cube.shape[1]
+    y, x = np.mgrid[:N, :N]
+    phi0s = np.column_stack((y.ravel(), x.ravel())).astype(float)
+    a, b = obj.PACOCalc(phi0s, cpu=cpu, use_gpu=False, **kw)
+    return a, b, obj
+
+
+def test_ring_order_equals_single_pass():
+    # One bin wider than the field = no ring resets: same a, b.
+    for cpu in (1, 2):
+        a1, b1, _ = _paco_ab(cpu)
+        a2, b2, _ = _paco_ab(cpu, radius_bin_width=1e9)
+        _assert_same(a1, a2)
+        _assert_same(b1, b2)
+
+
+def test_paco_matches_serial_reference():
+    # The cached, ring-ordered sweep against the base class, which
+    # precomputes every pixel's statistics.
+    from src import PACOBase
+    cube, pa, psf = _data()
+    ref = PACOBase(cube, pa, psf, fwhm=FWHM, pixscale=1.0, verbose=False).run(cpu=1)
+    _assert_same(_snr(PACO, 2), np.asarray(ref[0] if isinstance(ref, tuple) else ref))
+
+
+def test_tiny_budget_bounds_cache_not_result():
+    # A budget too small for more than one cache slot: the cache shrinks,
+    # misses rise, and a, b are unchanged.
+    import src.full_paco as fp
+    a1, b1, big = _paco_ab(2)
+    a2, b2, small = _paco_ab(2, memory_fraction=1e-9)
+    assert fp._G["capacity"] == 1
+    assert small.last_cache_stats["misses"] > big.last_cache_stats["misses"]
+    _assert_same(a1, a2)
+    _assert_same(b1, b2)
+
+
 if __name__ == "__main__":
     for name, fn in sorted(globals().items()):
         if name.startswith("test_"):

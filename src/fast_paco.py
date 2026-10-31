@@ -47,17 +47,20 @@ def _g_get_patch(p0: Tuple[int, int]) -> np.ndarray:
 
 
 def _stage1_worker(p0: tuple) -> tuple:
-    """Fused patch extraction + (m, Cinv, c, d) computation for one pixel."""
+    """Fused patch extraction + (c, d) computation for one pixel. Only c and
+    d go back to the parent: m and Cinv (K + K^2 values per pixel) are not
+    needed after this point, and returning them made the transfer, not the
+    algorithm, dominate Stage 1's memory on large fields."""
     patch = _g_get_patch((int(p0[0]), int(p0[1])))
     psf_vectorized = _G["vectorized_psf"]
     T = patch.shape[0]
     m, Cinv = compute_statistics_at_pixel(patch)
     if (m is None) or (Cinv is None) or np.any(np.isnan(patch)):
-        return (None, None, np.nan, np.full(T, np.nan))
+        return (np.nan, np.full(T, np.nan))
     w = Cinv @ psf_vectorized
     c = float(psf_vectorized.T @ w)
     d_vals = (patch - m) @ w
-    return (m, Cinv, c, d_vals)
+    return (c, d_vals)
 
 
 def _stage2_worker(args: tuple) -> Tuple[Optional[int], float, float]:
@@ -310,7 +313,7 @@ class FastPACO(PACOBase):
             stats_results = [_stage1_worker(p0) for p0 in tasks]
 
         return [
-            (original_indices[i], stats[2], stats[3])
+            (original_indices[i], stats[0], stats[1])
             for i, stats in enumerate(stats_results)
         ]
 
