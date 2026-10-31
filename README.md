@@ -15,7 +15,7 @@ By building a precise local model of the noise, PACO can perform a statistically
 
 ## About This Implementation
 
-This project, provides a class-based implementation of the PACO algorithm, structured around the `vip_hci` library.
+This project provides a class-based implementation of the PACO algorithm, structured around the `vip_hci` library. It was originally derived from VIP's PACO module (`vip_hci.invprob.paco`) and has since been substantially rewritten; it keeps VIP's class interface and depends on `vip_hci` at run time. See `LICENSE` for VIP's copyright notice.
 
 The key implemented components are:
 
