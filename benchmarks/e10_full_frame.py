@@ -49,6 +49,7 @@ Usage
         --channel 0 --cpu 32 --memory-backend pss
 """
 import argparse
+import csv
 import json
 import os
 import sys
@@ -365,7 +366,10 @@ def self_calibrate(snr, fwhm, mask_xy, width):
 def cmd_real(args):
     print_system_info()
     cube, pa, psf, fwhm = load(args)
-    if args.flip_angles:
+    # SPHERE rotnth.fits stores the angles with the opposite sign to the
+    # one PACO and VIP expect (see challenge/run_real_system_comparison.py);
+    # used as stored, the planets smear out instead of adding up.
+    if not args.keep_angle_sign:
         pa = -pa
     cube = crop(cube, args.size)
     T, H, W = cube.shape
@@ -376,7 +380,12 @@ def cmd_real(args):
     print(f"planets (px): {[(n, round(v / args.pixscale, 1)) for n, v in planets]}, "
           f"tolerance {tol:.1f} px", flush=True)
 
+    # Keep the timings of methods run earlier (maps loaded from disk).
     maps, rows = {}, []
+    tpath = os.path.join(out, "timing.csv")
+    if os.path.exists(tpath):
+        with open(tpath) as f:
+            rows = list(csv.DictReader(f))
     for m in args.methods:
         c = cube
         if m == "vip":
@@ -398,6 +407,7 @@ def cmd_real(args):
                 run_ours(m, c, pa, psf, fwhm, args.cpu)[0]
             dt = time.perf_counter() - t0
         print(f"  {m}: {c.shape[1]}px, {dt:.1f} s, {mem_str(mon)}", flush=True)
+        rows = [x for x in rows if x["method"] != m]
         rows.append({"method": m, "T": T, "size": c.shape[1], "cpu": args.cpu,
                      "time_s": f"{dt:.2f}", **mem_columns(mon)})
         write_csv(os.path.join(out, "timing.csv"), rows)
@@ -526,8 +536,9 @@ def main():
     s.add_argument("--annulus-width", type=float, default=10.0,
                    help="px, for the per-annulus self-calibration")
     s.add_argument("--threshold", type=float, default=5.0)
-    s.add_argument("--flip-angles", action="store_true",
-                   help="negate the angles if the planets do not appear")
+    s.add_argument("--keep-angle-sign", action="store_true",
+                   help="use the angles as stored (default: negated, the "
+                        "rotnth.fits convention)")
     s.add_argument("--vip-size", type=int, default=None,
                    help="run VIP on this centered crop if the full frame does not fit")
     s.add_argument("--force-vip", action="store_true")
