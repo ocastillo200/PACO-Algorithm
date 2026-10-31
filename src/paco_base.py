@@ -6,6 +6,7 @@ flux estimation, and the reference PACO algorithm (Algorithm 2, [FLA18]).
 """
 import multiprocessing
 import os
+import shutil
 import sys
 import time
 import warnings
@@ -14,7 +15,6 @@ from typing import Callable, Dict, Generator, List, Literal, Optional, Tuple, Un
 import numpy as np
 import psutil
 from scipy import ndimage
-from scipy.ndimage import filters
 from vip_hci.fm import normalize_psf
 from vip_hci.metrics.detection import detection
 from vip_hci.preproc.rescaling import (cube_px_resampling, frame_px_resampling,
@@ -117,6 +117,21 @@ def cgroup_memory_headroom(proc_root: str = "/proc",
                 break
             rel = os.path.dirname(rel)
     return min(candidates) if candidates else None
+
+
+def shm_headroom(path: str = "/dev/shm") -> Optional[int]:
+    """
+    Free bytes in the tmpfs that backs POSIX shared memory on Linux, or None
+    where there is none (e.g. macOS). Containers size it separately from
+    the memory limit (Docker's default is 64 MB, raised with --shm-size),
+    so the shared statistics cache can exceed it even within the budget.
+    """
+    if not os.path.isdir(path):
+        return None
+    try:
+        return shutil.disk_usage(path).free
+    except OSError:
+        return None
 
 
 def deprecated_alias(cls, old_name):
@@ -969,7 +984,7 @@ class PACOBase:
         np.ndarray, shape (N, 2)
             Array of (x, y) pixel coordinates for each detection.
         """
-        data_max = filters.maximum_filter(snr_map, size=self.fwhm)
+        data_max = ndimage.maximum_filter(snr_map, size=self.fwhm)
         maxima = snr_map == data_max
         maxima[data_max <= threshold] = 0
 

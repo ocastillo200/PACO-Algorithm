@@ -1,0 +1,42 @@
+[build-system]
+requires = ["setuptools>=61"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "paco-algorithm"
+version = "0.1.0"
+description = "Memory-budgeted parallel implementation of the PACO exoplanet detection algorithm (Flasseur et al. 2018)"
+readme = "README.md"
+license = { file = "LICENSE" }
+authors = [{ name = "O. Castillo Vega" }]
+requires-python = ">=3.10"
+dependencies = [
+    "numpy>=2.0",
+    "scipy",
+    "psutil",
+    "tqdm",
+    "vip_hci>=1.6",
+]
+classifiers = [
+    "Programming Language :: Python :: 3",
+    "License :: OSI Approved :: MIT License",
+    "Operating System :: POSIX :: Linux",
+    "Operating System :: MacOS",
+    "Topic :: Scientific/Engineering :: Astronomy",
+]
+
+[project.optional-dependencies]
+gpu = ["cupy"]
+test = ["pytest"]
+
+[project.urls]
+Repository = "https://github.com/ocastillo200/PACO-Algorithm"
+
+# Installed as `paco` (from paco import PACO); inside a clone, the same
+# code is also importable as `src`, which the scripts and tests use.
+[tool.setuptools]
+package-dir = { paco = "src" }
+packages = ["paco"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]

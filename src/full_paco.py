@@ -18,7 +18,7 @@ from vip_hci.preproc.rescaling import frame_shift
 
 from .gpu import GPU_AVAILABLE, GPUFrameShifter
 from .math_utils import al, bl, compute_statistics_at_pixel, wfl
-from .paco_base import PACOBase, deprecated_alias
+from .paco_base import PACOBase, deprecated_alias, shm_headroom
 from .utils import create_boolean_circular_mask, extract_patch_window, get_rotated_pixel_coords
 
 # ---------------------------------------------------------------------------
@@ -72,6 +72,8 @@ _G: dict = {}
 # cache actually leaves. 0.3 reproduces the previous default split
 # (cache 0.25 / batches 0.65 of available RAM, i.e. ~0.28 of their sum).
 CACHE_BUDGET_SHARE = 0.3
+# Share of the free /dev/shm the parallel cache may take.
+SHM_SAFETY = 0.9
 
 
 def _g_get_patch(p0: Tuple[int, int]) -> np.ndarray:
@@ -432,6 +434,23 @@ class PACO(PACOBase):
         else:
             cache_budget = int(budget * CACHE_BUDGET_SHARE)
         capacity = self._estimate_cache_capacity(cache_budget)
+        if cpu > 1:
+            # The parallel cache lives in /dev/shm, which may be smaller
+            # than the budget (containers); a smaller cache costs time, not
+            # correctness.
+            shm_free = shm_headroom()
+            if shm_free is not None:
+                fit = (int(shm_free * SHM_SAFETY) - self.height * self.width * 4) // bytes_per_slot
+                if fit < 1:
+                    raise MemoryError(
+                        f"/dev/shm has {shm_free / 1024**2:.0f} MB free, too little for "
+                        f"one cache slot ({bytes_per_slot / 1024**2:.1f} MB); enlarge it "
+                        f"(e.g. docker --shm-size) or run with cpu=1")
+                if fit < capacity:
+                    if self.verbose:
+                        print(f"Statistics cache limited by /dev/shm "
+                              f"({shm_free / 1024**3:.2f} GiB free): {capacity} -> {fit} slots")
+                    capacity = fit
         cache_bytes = capacity * bytes_per_slot
         _G["capacity"] = capacity
         if self.verbose:
