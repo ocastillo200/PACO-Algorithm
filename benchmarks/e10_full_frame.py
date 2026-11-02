@@ -67,7 +67,7 @@ from astropy.io import fits
 from scipy import ndimage
 
 from _common import make_memory_monitor, mem_columns, mem_str, print_system_info
-from challenge.make_contrast_curve_sph3 import compute_fwhm
+from challenge.sph3_data import compute_fwhm
 from review_experiments import inject, null_angles, peak_near, wilson, write_csv
 from src.fast_paco import FastPACO
 from src.full_paco import PACO
@@ -283,7 +283,7 @@ def cmd_inject(args):
     rmin, rmax = 3 * fwhm, H / 2 - psf.shape[0] / 2 - 2
     rows = []
     for c in range(args.cubes):
-        pos, chosen = [], []
+        chosen = []
         seps = np.linspace(rmin, rmax, args.per_cube)
         rng.shuffle(seps)
         for sep in seps:
@@ -367,8 +367,8 @@ def cmd_real(args):
     print_system_info()
     cube, pa, psf, fwhm = load(args)
     # SPHERE rotnth.fits stores the angles with the opposite sign to the
-    # one PACO and VIP expect (see challenge/run_real_system_comparison.py);
-    # used as stored, the planets smear out instead of adding up.
+    # one PACO and VIP expect; used as stored, the planets smear out
+    # instead of adding up.
     if not args.keep_angle_sign:
         pa = -pa
     cube = crop(cube, args.size)

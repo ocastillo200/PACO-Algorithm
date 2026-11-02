@@ -64,7 +64,7 @@ sys.path.insert(0, ROOT)
 import numpy as np
 from scipy import stats
 
-from challenge.make_contrast_curve_sph3 import load_sph3, compute_fwhm
+from challenge.sph3_data import load_sph3, compute_fwhm
 from src.fast_paco import FastPACO
 from src.full_paco import PACO
 from src.math_utils import compute_statistics_at_pixel
@@ -208,8 +208,8 @@ def run_vip_fast(cube, pa, psf, fwhm, pxs, cpu):
 
 
 RUNNERS = {
-    "ours_full": ("PACO (this work)", run_ours_full),
-    "ours_fast": ("FastPACO (this work)", run_ours_fast),
+    "ours_full": ("Full PACO (this work)", run_ours_full),
+    "ours_fast": ("Fast PACO (this work)", run_ours_fast),
     "vip_fast": ("VIP FastPACO", run_vip_fast),
 }
 

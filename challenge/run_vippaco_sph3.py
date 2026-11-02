@@ -74,7 +74,7 @@ import numpy as np
 from scipy.ndimage import maximum_filter, label, find_objects
 from vip_hci.metrics import compute_binary_map
 
-from challenge.make_contrast_curve_sph3 import load_sph3, compute_fwhm
+from challenge.sph3_data import load_sph3, compute_fwhm
 
 try:
     from vip_hci.invprob.paco import FastPACO as VIP_FastPACO

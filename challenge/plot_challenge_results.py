@@ -1,14 +1,11 @@
 #!/usr/bin/env python3
 """
-Generate all comparison PDF figures for the PACO challenge results.
+Detection map and TPR/FDR/FPR curves of the EIDC sph3 dataset (Fig. 2 and
+Table 6 of the paper), from the S/N maps of rerun_sph3_challenge.py.
 
-Figures produced:
-  figure1_detection_maps_all.pdf   – 9 datasets × 2 algorithms gallery
-  figure2_sphere_irdis_detail.pdf  – per-dataset detection + curve (SPHERE)
-  figure3_nirc2_detail.pdf         – per-dataset detection + curve (NIRC2)
-  figure4_lmircam_detail.pdf       – per-dataset detection maps (LMIRCam)
-  figure5_metric_curves.pdf        – TPR/FDR/FPR curves from injection test
-  figure6_ranking_comparison.pdf   – ranking bar chart vs paper algorithms
+Outputs (challenge/figures/):
+  figure6_sph3_full.pdf, figure6_sph3_fast.pdf  map + curves per method
+  figure6_sph3_metrics.csv                      F1 and AUCs
 """
 
 import sys
@@ -27,8 +24,6 @@ import matplotlib.pyplot as plt
 import matplotlib.gridspec as gridspec
 from matplotlib.patches import Circle
 from matplotlib.lines import Line2D
-from matplotlib.colors import Normalize
-from matplotlib import cm
 from astropy.io import fits
 from scipy.optimize import curve_fit
 from scipy.ndimage import maximum_filter
@@ -43,7 +38,6 @@ FIG_DIR  = os.path.join(ROOT, "challenge", "figures")
 os.makedirs(FIG_DIR, exist_ok=True)
 
 # Datasets with known 0 injections (paper Table 3)
-ZERO_INJECTION = {"sphere_irdis_2", "nirc2_2"}
 
 THRESHOLD = 5.0
 
@@ -148,26 +142,8 @@ def compute_metrics_for_positions(snr, positions_xy, fwhm, threshold=THRESHOLD):
 
 # Paper Table 3 – speckle subtraction algorithms
 # Format: {name: {"sph": [f1, auc_tpr, auc_fdr], "nrc": [...], "lmr": [...]}}
-SPECKLE_RESULTS = {
-    "Baseline":      {"sph": [0.88, 0.53, 0.32], "nrc": [0.00, 0.29, 0.41], "lmr": [0.39, 0.38, 0.37]},
-    "LOCI":          {"sph": [0.83, 0.83, 0.39], "nrc": [0.68, 0.39, 0.40], "lmr": [0.72, 0.60, 0.39]},
-    r"TLOCI$_{SpeCal}$": {"sph": [0.38, 0.30, 0.23], "nrc": [0.15, 0.08, 0.38], "lmr": [0.08, 0.22, 0.49]},
-    r"PCA$_{MPIA}$":  {"sph": [0.75, 0.67, 0.30], "nrc": [0.33, 0.31, 0.34], "lmr": [0.66, 0.55, 0.36]},
-    r"PCA$_{Padova}$":{"sph": [0.67, 0.75, 0.46], "nrc": [0.00, 0.17, 0.25], "lmr": [0.37, 0.58, 0.57]},
-    r"STIM$_{full}$": {"sph": [1.00, 0.88, 0.38], "nrc": [0.25, 0.19, 0.39], "lmr": [0.39, 0.44, 0.42]},
-    r"STIM$_{ann}$":  {"sph": [0.83, 0.81, 0.43], "nrc": [0.00, 0.21, 0.45], "lmr": [0.54, 0.68, 0.40]},
-    "RSM":           {"sph": [1.00, 0.88, 0.06], "nrc": [0.68, 0.38, 0.04], "lmr": [0.89, 0.60, 0.17]},
-    "SLIMask":       {"sph": [1.00, 0.89, 0.07], "nrc": [0.58, 0.33, 0.40], "lmr": [0.82, 0.67, 0.31]},
-}
 
 # Paper Table 4 – inverse problem algorithms
-INVERSE_RESULTS = {
-    "ANDROMEDA":     {"sph": [1.00, 0.68, 0.36], "nrc": [0.25, 0.35, 0.38], "lmr": [0.33, 0.34, 0.38]},
-    "FMMF":          {"sph": [0.83, 0.93, 0.38], "nrc": [0.58, 0.39, 0.39], "lmr": [0.75, 0.77, 0.40]},
-    "PACO":          {"sph": [1.00, 0.97, 0.36], "nrc": [0.50, 0.39, 0.45], "lmr": [0.43, 0.46, 0.57]},
-    "pyPACO":        {"sph": [0.46, 0.97, 0.60], "nrc": [0.00, 0.16, 0.55], "lmr": [0.09, 0.93, 0.78]},
-    "TRAP":          {"sph": [1.00, 0.80, 0.36], "nrc": [0.25, 0.33, 0.33], "lmr": [0.76, 0.60, 0.37]},
-}
 
 # ──────────────────────────────────────────────────────────────────────────────
 # Helpers
@@ -177,21 +153,6 @@ def load_snr(inst, idx, variant):
     path = os.path.join(SNR_DIR, f"{inst}_{idx}_{variant}_snr.npy")
     if os.path.exists(path):
         return np.load(path)
-    return None
-
-
-def load_inject_snr(inst, idx, variant):
-    path = os.path.join(SNR_DIR, f"{inst}_{idx}_{variant}_inject_snr.npy")
-    if os.path.exists(path):
-        return np.load(path)
-    return None
-
-
-def load_inject_metrics(inst, idx, variant):
-    """Re-compute metrics from saved snr map + known injection positions."""
-    path = os.path.join(SNR_DIR, f"inject_metrics_{inst}_{idx}_{variant}.npy")
-    if os.path.exists(path):
-        return np.load(path, allow_pickle=True).item()
     return None
 
 
@@ -244,30 +205,6 @@ def circular_mask(ny, nx, r_inner, r_outer):
     yy, xx = np.ogrid[:ny, :nx]
     r = np.sqrt((yy - ny//2)**2 + (xx - nx//2)**2)
     return (r >= r_inner) & (r <= r_outer)
-
-
-def plot_snr_map(ax, snr, fwhm, threshold, title, cmap="magma"):
-    """Display SNR map and mark peaks above threshold."""
-    ny, nx = snr.shape
-    vmin, vmax = -3, min(float(np.nanpercentile(snr, 99.5)), 15)
-    im = ax.imshow(np.nan_to_num(snr, nan=0.0), origin="lower",
-                   cmap=cmap, vmin=vmin, vmax=vmax,
-                   interpolation="nearest")
-    # circular field mask
-    mask = circular_mask(ny, nx, 2 * fwhm, min(ny, nx) / 2 - 1)
-    overlay = np.zeros((ny, nx, 4))
-    overlay[~mask, 3] = 0.45
-    ax.imshow(overlay, origin="lower")
-    # detected peaks
-    peaks = find_peaks(snr, fwhm, threshold)
-    for (px, py) in peaks:
-        c = Circle((px, py), fwhm / 2, color="gold",
-                   fill=False, lw=1.5, linestyle="-")
-        ax.add_patch(c)
-    ax.set_title(title, fontsize=9, pad=3)
-    ax.set_xticks([])
-    ax.set_yticks([])
-    return im, peaks
 
 
 def match_peaks_to_injections(peaks, injections_xy, fwhm):
@@ -358,26 +295,6 @@ def plot_detection_map_paper_style(ax, snr, fwhm, threshold, injections_xy,
     return im, tp, fp, missed
 
 
-def plot_metric_curves(ax, thr, tpr, fdr, fpr, threshold,
-                        auc_tpr, auc_fdr, f1, title=""):
-    ax.fill_between(thr, tpr, alpha=0.3, color="green")
-    ax.fill_between(thr, fdr, alpha=0.3, color="red")
-    ax.plot(thr, tpr, color="green",  lw=1.5,
-            label=f"AUC$_{{TPR}}$={auc_tpr:.3f}")
-    ax.plot(thr, fdr, color="red",    lw=1.5,
-            label=f"AUC$_{{FDR}}$={auc_fdr:.3f}")
-    ax.plot(thr, fpr, color="steelblue", lw=1.2, linestyle="--",
-            label=f"FPR")
-    ax.axvline(threshold, color="gray", linestyle=":", lw=1)
-    ax.set_xlim(0, thr[-1])
-    ax.set_ylim(0, 1.05)
-    ax.set_xlabel("Threshold", fontsize=8)
-    ax.set_ylabel("TPR / FDR / FPR", fontsize=8)
-    ax.set_title(f"F1={f1:.3f}", fontsize=9)
-    ax.legend(fontsize=7, loc="upper right")
-    ax.tick_params(labelsize=7)
-
-
 def auc(y, x):
     """Normalised area under curve."""
     if len(x) < 2:
@@ -389,418 +306,12 @@ def auc(y, x):
 # Collect injection-test metrics saved by run script
 # ──────────────────────────────────────────────────────────────────────────────
 
-def load_injection_metrics():
-    """Load pre-computed injection metrics from disk."""
-    meta_path = os.path.join(OUT_DIR, "results_meta.npy")
-    if not os.path.exists(meta_path):
-        return {}
-    data = np.load(meta_path, allow_pickle=True).item()
-    return data.get("inject_metrics", {})
-
-
-inj_meta = load_injection_metrics()
 
 # Re-load full metric arrays from the injection SNR maps
-def rebuild_inject_metrics(inst, idx, variant, positions_xy, fwhm):
-    """Recompute metric sweep from saved injection SNR map."""
-    from vip_hci.metrics import compute_binary_map
-
-    snr = load_inject_snr(inst, idx, variant)
-    if snr is None:
-        return None
-    ny, nx = snr.shape
-    peak_map = build_peak_map(snr, fwhm)
-    thr_grid = np.linspace(0, 2 * THRESHOLD, 80)
-    n_inj = len(positions_xy)
-    r_inner = 2 * fwhm
-    r_outer = min(ny, nx) / 2 - 1
-    mask = circular_mask(ny, nx, r_inner, r_outer)
-    n_res = max(1, int(mask.sum() / (np.pi * (fwhm / 2)**2)))
-
-    tpr_arr, fdr_arr, fpr_arr = [], [], []
-    for thr in thr_grid:
-        try:
-            res = compute_binary_map(
-                peak_map, thresholds=[thr],
-                injections=tuple((p[0], p[1]) for p in positions_xy),
-                fwhm=fwhm, npix=1, overlap_threshold=0.7,
-                max_blob_fact=2, debug=False, plot=False)
-            n_det, n_fp, _ = res
-            n_det, n_fp = n_det[0], n_fp[0]
-        except Exception:
-            n_det, n_fp = 0, 0
-        tpr = n_det / n_inj if n_inj > 0 else 0.0
-        fdr = n_fp / (n_fp + n_det) if (n_fp + n_det) > 0 else 0.0
-        fpr = n_fp / (n_fp + n_res) if (n_fp + n_res) > 0 else 0.0
-        tpr_arr.append(tpr); fdr_arr.append(fdr); fpr_arr.append(fpr)
-
-    tpr_arr = np.array(tpr_arr)
-    fdr_arr = np.array(fdr_arr)
-    fpr_arr = np.array(fpr_arr)
-
-    # at threshold
-    try:
-        rt = compute_binary_map(
-            peak_map, thresholds=[THRESHOLD],
-            injections=tuple((p[0], p[1]) for p in positions_xy),
-            fwhm=fwhm, npix=1, overlap_threshold=0.7,
-            max_blob_fact=2, debug=False, plot=False)
-        nd, nfp, _ = rt; nd, nfp = nd[0], nfp[0]
-    except Exception:
-        nd, nfp = 0, 0
-
-    prec = nd / (nd + nfp) if (nd + nfp) > 0 else 0.0
-    rec  = nd / n_inj if n_inj > 0 else 0.0
-    f1   = 2 * prec * rec / (prec + rec) if (prec + rec) > 0 else 0.0
-    auc_tpr = auc(tpr_arr, thr_grid)
-    auc_fdr = auc(fdr_arr, thr_grid)
-
-    return {"thr": thr_grid, "tpr": tpr_arr, "fdr": fdr_arr, "fpr": fpr_arr,
-            "f1": f1, "auc_tpr": auc_tpr, "auc_fdr": auc_fdr, "n_det": nd, "n_fp": nfp}
 
 
 # Known injection positions from run script (sep_arcsec, pa_deg, contrast)
-INJECTIONS_CONFIG = [(0.35, 45, 2e-5), (0.55, 155, 2e-5), (0.75, 270, 2e-5)]
 
-def get_injection_positions(inst, idx):
-    """Compute injection x,y positions for a given dataset."""
-    pxs_file = os.path.join(DATA_DIR, f"{inst}_pxscale_{idx}.fits")
-    pa_file  = os.path.join(DATA_DIR, f"{inst}_pa_{idx}.fits")
-    pxs = float(fits.getdata(pxs_file).flat[0])
-    if np.isnan(pxs) or pxs <= 0:
-        pxs = {"nirc2": 0.020}.get(inst, 0.020)
-    pa  = fits.getdata(pa_file).ravel()
-
-    cube = fits.getdata(os.path.join(DATA_DIR, f"{inst}_cube_{idx}.fits"))
-    ny, nx = cube.shape[1], cube.shape[2]
-    cy, cx = ny // 2, nx // 2
-
-    positions = []
-    for sep_as, pa_deg, _ in INJECTIONS_CONFIG:
-        sep_px = sep_as / pxs
-        # Derotated (sky/output-frame) position: pa_deg alone, no pa[0] term.
-        # Must match run_paco_challenge.py's inject_companion_into_cube.
-        theta  = np.deg2rad(pa_deg)
-        x = cx + sep_px * np.sin(theta)
-        y = cy - sep_px * np.cos(theta)
-        positions.append((x, y))
-    return positions
-
-
-# ══════════════════════════════════════════════════════════════════════════════
-# FIGURE 1 – Detection Maps Gallery (all 9 datasets × 2 algorithms)
-# ══════════════════════════════════════════════════════════════════════════════
-print("Generating Figure 1: detection maps gallery …")
-
-INST_LABELS = {
-    "sphere_irdis": "VLT/SPHERE-IRDIS",
-    "nirc2":        "Keck/NIRC2",
-    "lmircam":      "LBT/LMIRCam",
-}
-
-fig, axes = plt.subplots(
-    9, 3,
-    figsize=(11, 30),
-    gridspec_kw={"wspace": 0.05, "hspace": 0.35},
-)
-fig.patch.set_facecolor("#111111")
-
-col_labels = ["FullPACO", "FastPACO", "Difference\n(Fast − Full)"]
-for col, lbl in enumerate(col_labels):
-    axes[0, col].set_title(lbl, fontsize=11, color="white", pad=8)
-
-row = 0
-for inst in ["sphere_irdis", "nirc2", "lmircam"]:
-    for idx in [1, 2, 3]:
-        label = f"{inst}_{idx}"
-        fwhm  = compute_fwhm_from_psf(inst, idx)
-        snr_fast = load_snr(inst, idx, "fast")
-        snr_full = load_snr(inst, idx, "full")
-
-        for col, (variant, snr) in enumerate([("full", snr_full), ("fast", snr_fast)]):
-            ax = axes[row, col]
-            ax.set_facecolor("#111111")
-            if snr is None:
-                ax.text(0.5, 0.5, "Not computed\n(LMIRCam)", color="white",
-                        ha="center", va="center", transform=ax.transAxes, fontsize=8)
-                ax.set_xticks([]); ax.set_yticks([])
-                row_label = f"{INST_LABELS[inst]}\n#{idx}"
-                if col == 0:
-                    ax.set_ylabel(row_label, color="white", fontsize=8)
-                continue
-            im, peaks = plot_snr_map(ax, snr, fwhm, THRESHOLD,
-                                     title=f"{INST_LABELS[inst]} #{idx} – "
-                                           f"{'Full' if variant=='full' else 'Fast'}PACO",
-                                     cmap="magma")
-            plt.colorbar(im, ax=ax, fraction=0.046, pad=0.04).ax.tick_params(
-                labelsize=6, colors="white")
-
-        # Difference panel
-        ax = axes[row, 2]
-        ax.set_facecolor("#111111")
-        if snr_fast is not None and snr_full is not None:
-            diff = snr_fast - snr_full
-            vd   = np.nanpercentile(np.abs(diff), 99)
-            im2  = ax.imshow(np.nan_to_num(diff, nan=0.0), origin="lower",
-                             cmap="RdBu_r", vmin=-vd, vmax=vd,
-                             interpolation="nearest")
-            ax.set_title(f"Δ SNR  std={np.nanstd(diff):.2f}", fontsize=8,
-                         color="white", pad=3)
-            plt.colorbar(im2, ax=ax, fraction=0.046, pad=0.04).ax.tick_params(
-                labelsize=6, colors="white")
-        else:
-            ax.text(0.5, 0.5, "—", color="white", ha="center", va="center",
-                    transform=ax.transAxes, fontsize=14)
-        ax.set_xticks([]); ax.set_yticks([])
-        row += 1
-
-for ax in axes.ravel():
-    for spine in ax.spines.values():
-        spine.set_edgecolor("#444444")
-
-plt.suptitle("FullPACO vs FastPACO – ADI Subchallenge Detection Maps",
-             color="white", fontsize=14, y=1.002)
-
-fig.savefig(os.path.join(FIG_DIR, "figure1_detection_maps_all.pdf"),
-            bbox_inches="tight", facecolor="#111111", dpi=150)
-plt.close(fig)
-print("  ✓ figure1_detection_maps_all.pdf")
-
-# ══════════════════════════════════════════════════════════════════════════════
-# FIGURE 2 – Per-dataset detail: SPHERE-IRDIS
-# ══════════════════════════════════════════════════════════════════════════════
-print("Generating Figure 2: SPHERE-IRDIS detail …")
-
-inst = "sphere_irdis"
-fig2, axes2 = plt.subplots(3, 4, figsize=(16, 12),
-                            gridspec_kw={"wspace": 0.15, "hspace": 0.35})
-fig2.suptitle("SPHERE-IRDIS Datasets – FullPACO vs FastPACO", fontsize=13)
-
-for row, idx in enumerate([1, 2, 3]):
-    fwhm = compute_fwhm_from_psf(inst, idx)
-    snr_full = load_snr(inst, idx, "full")
-    snr_fast = load_snr(inst, idx, "fast")
-    label = f"{inst}_{idx}"
-    zero_inj = label in ZERO_INJECTION
-
-    for col, (variant, snr) in enumerate([("full", snr_full), ("fast", snr_fast)]):
-        ax = axes2[row, col]
-        if snr is None:
-            ax.text(0.5, 0.5, "N/A", ha="center", va="center",
-                    transform=ax.transAxes)
-            continue
-        peaks = find_peaks(snr, fwhm, THRESHOLD)
-        im, _ = plot_snr_map(ax, snr, fwhm, THRESHOLD,
-                              title=f"sph{idx} – {'Full' if variant=='full' else 'Fast'}PACO "
-                                    f"(det={len(peaks)})",
-                              cmap="magma")
-        plt.colorbar(im, ax=ax, fraction=0.046, pad=0.04).ax.tick_params(labelsize=7)
-        if zero_inj:
-            ax.text(0.02, 0.98, "0 injections", color="cyan", fontsize=7,
-                    transform=ax.transAxes, va="top")
-
-    # Peak SNR histogram (col 2)
-    ax3 = axes2[row, 2]
-    for variant, snr, color, lbl in [
-            ("full", snr_full, "steelblue", "FullPACO"),
-            ("fast", snr_fast, "darkorange", "FastPACO")]:
-        if snr is None:
-            continue
-        ny, nx = snr.shape
-        mask = circular_mask(ny, nx, 2 * fwhm, min(ny, nx) / 2 - 1)
-        vals = snr[mask]
-        vals = vals[~np.isnan(vals)]
-        ax3.hist(vals, bins=50, alpha=0.5, color=color, label=lbl, density=True)
-    ax3.axvline(THRESHOLD, color="red", linestyle="--", lw=1, label=f"{THRESHOLD}σ")
-    ax3.set_xlabel("SNR", fontsize=8)
-    ax3.set_ylabel("Density", fontsize=8)
-    ax3.legend(fontsize=7)
-    ax3.set_title(f"sph{idx} SNR distribution", fontsize=9)
-    ax3.tick_params(labelsize=7)
-
-    # Stats (col 3)
-    ax4 = axes2[row, 3]
-    ax4.axis("off")
-    lines = [f"Dataset: sph{idx}",
-             f"Zero inj: {zero_inj}",
-             f"FWHM: {fwhm:.2f} px", ""]
-    for variant, snr, lbl in [("full", snr_full, "FullPACO"),
-                                ("fast", snr_fast, "FastPACO")]:
-        if snr is None:
-            lines += [f"{lbl}: N/A", ""]
-            continue
-        ny, nx = snr.shape
-        mask = circular_mask(ny, nx, 2 * fwhm, min(ny, nx) / 2 - 1)
-        vals = snr[mask]
-        vals = vals[~np.isnan(vals)]
-        peaks = find_peaks(snr, fwhm, THRESHOLD)
-        lines += [f"{lbl}:",
-                  f"  max SNR: {np.nanmax(snr):.2f}",
-                  f"  std: {np.nanstd(vals):.2f}",
-                  f"  peaks>{THRESHOLD}σ: {len(peaks)}", ""]
-    ax4.text(0.05, 0.95, "\n".join(lines), transform=ax4.transAxes,
-             va="top", ha="left", fontsize=8, family="monospace",
-             bbox=dict(boxstyle="round", facecolor="lightyellow", alpha=0.5))
-
-fig2.savefig(os.path.join(FIG_DIR, "figure2_sphere_irdis_detail.pdf"),
-             bbox_inches="tight", dpi=150)
-plt.close(fig2)
-print("  ✓ figure2_sphere_irdis_detail.pdf")
-
-# ══════════════════════════════════════════════════════════════════════════════
-# FIGURE 3 – Per-dataset detail: NIRC2
-# ══════════════════════════════════════════════════════════════════════════════
-print("Generating Figure 3: NIRC2 detail …")
-
-inst = "nirc2"
-fig3, axes3 = plt.subplots(3, 4, figsize=(16, 12),
-                            gridspec_kw={"wspace": 0.15, "hspace": 0.35})
-fig3.suptitle("Keck/NIRC2 Datasets – FullPACO vs FastPACO", fontsize=13)
-
-for row, idx in enumerate([1, 2, 3]):
-    fwhm = compute_fwhm_from_psf(inst, idx)
-    snr_full = load_snr(inst, idx, "full")
-    snr_fast = load_snr(inst, idx, "fast")
-    label = f"{inst}_{idx}"
-    zero_inj = label in ZERO_INJECTION
-
-    for col, (variant, snr) in enumerate([("full", snr_full), ("fast", snr_fast)]):
-        ax = axes3[row, col]
-        if snr is None:
-            ax.text(0.5, 0.5, "N/A", ha="center", va="center",
-                    transform=ax.transAxes)
-            continue
-        peaks = find_peaks(snr, fwhm, THRESHOLD)
-        im, _ = plot_snr_map(ax, snr, fwhm, THRESHOLD,
-                              title=f"nrc{idx} – {'Full' if variant=='full' else 'Fast'}PACO "
-                                    f"(det={len(peaks)})",
-                              cmap="magma")
-        plt.colorbar(im, ax=ax, fraction=0.046, pad=0.04).ax.tick_params(labelsize=7)
-        if zero_inj:
-            ax.text(0.02, 0.98, "0 injections", color="cyan", fontsize=7,
-                    transform=ax.transAxes, va="top")
-
-    ax3 = axes3[row, 2]
-    for variant, snr, color, lbl in [
-            ("full", snr_full, "steelblue", "FullPACO"),
-            ("fast", snr_fast, "darkorange", "FastPACO")]:
-        if snr is None:
-            continue
-        ny, nx = snr.shape
-        mask = circular_mask(ny, nx, 2 * fwhm, min(ny, nx) / 2 - 1)
-        vals = snr[mask]; vals = vals[~np.isnan(vals)]
-        ax3.hist(vals, bins=50, alpha=0.5, color=color, label=lbl, density=True)
-    ax3.axvline(THRESHOLD, color="red", linestyle="--", lw=1)
-    ax3.set_xlabel("SNR", fontsize=8); ax3.legend(fontsize=7)
-    ax3.set_title(f"nrc{idx} SNR distribution", fontsize=9)
-    ax3.tick_params(labelsize=7)
-
-    ax4 = axes3[row, 3]; ax4.axis("off")
-    lines = [f"Dataset: nrc{idx}", f"Zero inj: {zero_inj}",
-             f"FWHM: {fwhm:.2f} px", ""]
-    for variant, snr, lbl in [("full", snr_full, "FullPACO"),
-                                ("fast", snr_fast, "FastPACO")]:
-        if snr is None:
-            lines += [f"{lbl}: N/A", ""]
-            continue
-        ny, nx = snr.shape
-        mask = circular_mask(ny, nx, 2 * fwhm, min(ny, nx) / 2 - 1)
-        vals = snr[mask]; vals = vals[~np.isnan(vals)]
-        peaks = find_peaks(snr, fwhm, THRESHOLD)
-        lines += [f"{lbl}:", f"  max SNR: {np.nanmax(snr):.2f}",
-                  f"  std: {np.nanstd(vals):.2f}",
-                  f"  peaks>{THRESHOLD}σ: {len(peaks)}", ""]
-    ax4.text(0.05, 0.95, "\n".join(lines), transform=ax4.transAxes,
-             va="top", ha="left", fontsize=8, family="monospace",
-             bbox=dict(boxstyle="round", facecolor="lightyellow", alpha=0.5))
-
-fig3.savefig(os.path.join(FIG_DIR, "figure3_nirc2_detail.pdf"),
-             bbox_inches="tight", dpi=150)
-plt.close(fig3)
-print("  ✓ figure3_nirc2_detail.pdf")
-
-# ══════════════════════════════════════════════════════════════════════════════
-# FIGURE 4 – LMIRCam detection maps (FastPACO only)
-# ══════════════════════════════════════════════════════════════════════════════
-print("Generating Figure 4: LMIRCam detection maps …")
-
-inst = "lmircam"
-fig4, axes4 = plt.subplots(1, 3, figsize=(15, 5),
-                            gridspec_kw={"wspace": 0.12})
-fig4.suptitle("LBT/LMIRCam Datasets – FastPACO Detection Maps", fontsize=13)
-
-for col, idx in enumerate([1, 2, 3]):
-    fwhm = compute_fwhm_from_psf(inst, idx)
-    snr  = load_snr(inst, idx, "fast")
-    ax   = axes4[col]
-    if snr is None:
-        ax.text(0.5, 0.5, "Running…", ha="center", va="center",
-                transform=ax.transAxes, fontsize=12)
-        ax.set_title(f"lmr{idx} – FastPACO (pending)", fontsize=10)
-        continue
-    peaks = find_peaks(snr, fwhm, THRESHOLD)
-    im, _ = plot_snr_map(ax, snr, fwhm, THRESHOLD,
-                         title=f"lmr{idx} – FastPACO (det={len(peaks)})")
-    plt.colorbar(im, ax=ax, fraction=0.046, pad=0.04).ax.tick_params(labelsize=7)
-
-fig4.savefig(os.path.join(FIG_DIR, "figure4_lmircam_detection.pdf"),
-             bbox_inches="tight", dpi=150)
-plt.close(fig4)
-print("  ✓ figure4_lmircam_detection.pdf")
-
-# ══════════════════════════════════════════════════════════════════════════════
-# FIGURE 5 – Metric curves from self-injection test
-# ══════════════════════════════════════════════════════════════════════════════
-print("Generating Figure 5: metric curves from injection test …")
-
-INJECT_DSETS = [("sphere_irdis", 2), ("nirc2", 2)]
-
-fig5, axes5 = plt.subplots(
-    len(INJECT_DSETS), 4,
-    figsize=(18, 5 * len(INJECT_DSETS)),
-    gridspec_kw={"wspace": 0.25, "hspace": 0.4})
-
-for row, (inst, idx) in enumerate(INJECT_DSETS):
-    fwhm = compute_fwhm_from_psf(inst, idx)
-    positions = get_injection_positions(inst, idx)
-    inst_label = {"sphere_irdis": "SPHERE-IRDIS", "nirc2": "NIRC2"}[inst]
-
-    for col, variant in enumerate(["full", "fast"]):
-        m = rebuild_inject_metrics(inst, idx, variant, positions, fwhm)
-        snr_inj = load_inject_snr(inst, idx, variant)
-        vname = "FullPACO" if variant == "full" else "FastPACO"
-
-        # col 0/1: SNR map with injections
-        ax_map = axes5[row, col]
-        if snr_inj is None:
-            ax_map.text(0.5, 0.5, "No data", ha="center", va="center",
-                        transform=ax_map.transAxes)
-        else:
-            im, peaks = plot_snr_map(ax_map, snr_inj, fwhm, THRESHOLD,
-                                     title=f"{inst_label} #{idx}\n{vname} + injections")
-            plt.colorbar(im, ax=ax_map, fraction=0.046).ax.tick_params(labelsize=7)
-            for px, py in positions:
-                c = Circle((px, py), fwhm / 2 * + 4,
-                            color="deepskyblue", fill=False, lw=1.5, linestyle="--")
-                ax_map.add_patch(c)
-
-        # col 2/3: metric curves
-        ax_c = axes5[row, 2 + col]
-        if m is not None:
-            plot_metric_curves(ax_c, m["thr"], m["tpr"], m["fdr"], m["fpr"],
-                               THRESHOLD, m["auc_tpr"], m["auc_fdr"], m["f1"],
-                               title=f"{vname} – Self-injection")
-        else:
-            ax_c.text(0.5, 0.5, "No data", ha="center", va="center",
-                      transform=ax_c.transAxes)
-
-fig5.suptitle("Self-Injection Metric Test\n"
-              "(Blue dashed circles = injected companion positions; "
-              "gold = detected above 5σ)", fontsize=12)
-fig5.savefig(os.path.join(FIG_DIR, "figure5_metric_curves.pdf"),
-             bbox_inches="tight", dpi=150)
-plt.close(fig5)
-print("  ✓ figure5_metric_curves.pdf")
 
 # ══════════════════════════════════════════════════════════════════════════════
 # FIGURE 6 – Detailed sph3 comparison (5 injections in challenge data)
@@ -823,8 +334,8 @@ for variant, snr in [("full", snr_full), ("fast", snr_fast)]:
             snr, SPH3_GROUND_TRUTH_XY, fwhm)
 
 ref_data = [
-    ("FullPACO (ours)", "figure6_sph3_full.pdf", snr_full, "full"),
-    ("FastPACO (ours)", "figure6_sph3_fast.pdf", snr_fast, "fast"),
+    ("Full PACO (this work)", "figure6_sph3_full.pdf", snr_full, "full"),
+    ("Fast PACO (this work)", "figure6_sph3_fast.pdf", snr_fast, "fast"),
 ]
 
 for lbl, fname, snr, variant in ref_data:
@@ -897,7 +408,7 @@ with open(csv_path, "w", newline="") as f:
     w.writerow(["paper_table4", "PACO", PAPER_PACO_SPH3["f1"],
                PAPER_PACO_SPH3["auc_tpr"], PAPER_PACO_SPH3["auc_fdr"],
                "", "", "", 5])
-    for variant, lbl2 in [("full", "FullPACO (ours)"), ("fast", "FastPACO (ours)")]:
+    for variant, lbl2 in [("full", "Full PACO (this work)"), ("fast", "Fast PACO (this work)")]:
         if variant not in sph3_metrics:
             w.writerow(["ours", lbl2, "", "", "", "", "", "", 5])
             continue

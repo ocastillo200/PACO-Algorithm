@@ -10,7 +10,7 @@ import shutil
 import sys
 import time
 import warnings
-from typing import Callable, Dict, Generator, List, Literal, Optional, Tuple, Union
+from typing import Optional, Tuple, Union
 
 import numpy as np
 import psutil
@@ -117,6 +117,18 @@ def cgroup_memory_headroom(proc_root: str = "/proc",
                 break
             rel = os.path.dirname(rel)
     return min(candidates) if candidates else None
+
+
+def worker_init() -> None:
+    """Pool initializer: one BLAS thread per worker process. The workers
+    already occupy the cores; with OpenBLAS's default of one thread per
+    core in every worker, large patches (K ~ 200) oversubscribe the machine
+    by a factor of nproc and stall the run."""
+    try:
+        from threadpoolctl import threadpool_limits
+        threadpool_limits(limits=1)
+    except ImportError:
+        pass
 
 
 def shm_headroom(path: str = "/dev/shm") -> Optional[int]:
@@ -490,8 +502,7 @@ class PACOBase:
             compute_statistics_gpu) instead of computing it on CPU. Falls
             back to the CPU path automatically if no CUDA device is
             available. This is the stage that dominates wall time for large
-            cubes (big T or K), as opposed to the PSF-shift preprocessing
-            GPUFrameShifter targets.
+            cubes (big T or K).
 
         Returns
         -------
@@ -648,7 +659,7 @@ class PACOBase:
         _G["patch_area"] = self.patch_area_pixels
 
         ctx = multiprocessing.get_context("fork")
-        with ctx.Pool(processes=cpu) as pool:
+        with ctx.Pool(processes=cpu, initializer=worker_init) as pool:
             results = pool.map(_stats_worker, [tuple(p0) for p0 in phi0s])
 
         if self.verbose:
@@ -742,7 +753,7 @@ class PACOBase:
             _G["patch_width"] = self.patch_width
             _G["patch_area"] = self.patch_area_pixels
             ctx = multiprocessing.get_context("fork")
-            with ctx.Pool(processes=cpu) as pool:
+            with ctx.Pool(processes=cpu, initializer=worker_init) as pool:
                 raw_patches = pool.map(
                     _g_get_patch, [(int(p0[0]), int(p0[1])) for p0 in phi0s])
         else:

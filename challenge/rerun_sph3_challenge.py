@@ -1,18 +1,11 @@
 #!/usr/bin/env python3
 """
-Re-run just the sph3 (sphere_irdis, idx=3) Full/Fast PACO challenge results,
-after the get_rotated_pixel_coords centre-offset fix (src/utils.py -- see
-the "0.5px offset" investigation). Does NOT import run_paco_challenge.py
-(which has no __main__ guard and would execute the full 9-dataset pipeline
-as an import side effect) -- the needed functions (load_dataset,
-compute_fwhm, run_fast_paco, run_full_paco_efficient, _compute_stats_one)
-are copied verbatim from there instead, so this exercises the exact same
-code path the original results were generated with, just with the fixed
-coordinate function underneath.
+Full and Fast PACO S/N maps of the EIDC sph3 dataset (sphere_irdis,
+idx=3), used for Sect. 5.3 and Table 6 of the paper and plotted by
+plot_challenge_results.py.
 
-Overwrites challenge/outputs/snr_maps/sphere_irdis_3_{full,fast}_snr.npy
-(and the _flux_ counterparts) -- the pre-fix versions were backed up first
-as *_pre_centerfix_backup.npy for comparison.
+Writes challenge/outputs/snr_maps/sphere_irdis_3_{full,fast}_snr.npy
+(and the _flux_ counterparts).
 
 Usage
 -----

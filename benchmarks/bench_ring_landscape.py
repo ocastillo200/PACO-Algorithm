@@ -59,11 +59,9 @@ committing to the full grid; --dry-run prints the planned grid and exits
 without running anything.
 """
 import argparse
-import csv
 import os
 import time
 
-import numpy as np
 
 from _common import (arrays_equal, make_synthetic_dataset, make_test_positions,
                      parse_nproc_list, print_system_info, ResultTable,

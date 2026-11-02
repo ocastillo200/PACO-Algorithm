@@ -66,7 +66,7 @@ from scipy import ndimage, stats
 
 import src.fast_paco as fast_mod
 import src.full_paco as full_mod
-from challenge.make_contrast_curve_sph3 import compute_fwhm
+from challenge.sph3_data import compute_fwhm
 from src.fast_paco import FastPACO
 from src.full_paco import PACO
 from src.math_utils import compute_statistics_at_pixel

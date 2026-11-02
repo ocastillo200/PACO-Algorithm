@@ -65,7 +65,7 @@ sys.path.insert(0, ROOT)
 import numpy as np
 from scipy import ndimage, stats
 
-from challenge.make_contrast_curve_sph3 import load_sph3, compute_fwhm
+from challenge.sph3_data import load_sph3, compute_fwhm
 from src.fast_paco import FastPACO
 from src.full_paco import PACO
 from src.utils import get_rotated_pixel_coords

@@ -27,9 +27,7 @@ per-item byte estimate from GPUStatisticsBatcher's verbose output).
 Also exercises the OOM-retry / per-chunk CPU-fallback path added to
 src.gpu.GPUBatchDriver: pass a small --gpu-memory-fraction to force
 small GPU batches (more chunk boundaries = more chances to see the
-retry/fallback logic trigger for real under genuine VRAM pressure,
-rather than only against the fake_cupy-based fault injection in
-benchmarks/bench_gpu_fake_smoke.py). A UserWarning printed during a run
+retry/fallback logic trigger under genuine VRAM pressure). A UserWarning printed during a run
 means a chunk could not be computed on the GPU and silently fell back to
 CPU for that chunk only -- the run still completes and `correct` still
 gets checked, but if you see these unexpectedly (not because you asked
@@ -47,7 +45,6 @@ Usage
 """
 import time
 
-import numpy as np
 
 from _common import (arrays_equal, make_arg_parser, make_test_positions,
                      load_dataset_from_args, print_system_info, ResultTable,
@@ -69,8 +66,7 @@ def main():
                              "small value (e.g. 0.02) to deliberately "
                              "force many small batches and exercise the "
                              "OOM-retry/CPU-fallback path under real VRAM "
-                             "pressure instead of just the fake-GPU fault "
-                             "injection in bench_gpu_fake_smoke.py.")
+                             "pressure.")
     args = parser.parse_args()
     print_system_info()
 

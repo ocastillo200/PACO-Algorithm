@@ -10,7 +10,6 @@ import argparse
 import csv
 import os
 import sys
-import time
 import warnings
 from pathlib import Path
 
@@ -301,12 +300,10 @@ class CgroupMemoryMonitor:
             self._thread.join(timeout=2 * self.interval + 1)
         self._sample_once()  # catch a final memory.current peak right at teardown
 
-        peak_read_ok = False
         try:
             with open(os.path.join(self._leaf_dir, "memory.peak")) as f:
                 peak_value_mb = int(f.read().strip()) / 1024**2
             self.peak_mb = max(self.peak_mb, peak_value_mb)
-            peak_read_ok = True
         except OSError as exc:
             if self._n_samples > 0:
                 print(f"[CgroupMemoryMonitor] memory.peak unavailable at "

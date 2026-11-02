@@ -7,15 +7,18 @@ rotated test position (Stage 2), enabling vectorised processing.
 import multiprocessing
 import time
 import warnings
-from typing import Generator, Optional, Tuple
+from typing import TYPE_CHECKING, Generator, Optional, Tuple
 
 import numpy as np
 from scipy.ndimage import map_coordinates
 from vip_hci.fm import normalize_psf
 
 from .gpu import GPU_AVAILABLE
+
+if TYPE_CHECKING:
+    from .gpu import GPUStatisticsBatcher
 from .math_utils import compute_statistics_at_pixel
-from .paco_base import PACOBase, deprecated_alias
+from .paco_base import PACOBase, deprecated_alias, worker_init
 from .utils import create_boolean_circular_mask, extract_patch_window, get_rotated_pixel_coords
 
 # ---------------------------------------------------------------------------
@@ -220,7 +223,7 @@ class FastPACO(PACOBase):
             gpu_batcher = GPUStatisticsBatcher(
                 gpu_memory_safety_factor=effective_gpu_fraction, verbose=self.verbose)
 
-        pool1 = ctx.Pool(processes=cpu) if cpu > 1 else None
+        pool1 = ctx.Pool(processes=cpu, initializer=worker_init) if cpu > 1 else None
         try:
             all_results_unordered = []
             for i, indexed_batch in enumerate(self._batch_generator(indexed_native_phi0s, batch_size)):
@@ -261,7 +264,7 @@ class FastPACO(PACOBase):
         _G["d_map"] = self.d_map
         _G["num_frames"] = self.num_frames
 
-        pool2 = ctx.Pool(processes=cpu) if cpu > 1 else None
+        pool2 = ctx.Pool(processes=cpu, initializer=worker_init) if cpu > 1 else None
         try:
             for i, indexed_batch in enumerate(self._batch_generator(indexed_phi0s, batch_size)):
                 process_args = [

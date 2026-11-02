@@ -16,9 +16,9 @@ import psutil
 import tqdm
 from vip_hci.preproc.rescaling import frame_shift
 
-from .gpu import GPU_AVAILABLE, GPUFrameShifter
+from .gpu import GPU_AVAILABLE
 from .math_utils import al, bl, compute_statistics_at_pixel, wfl
-from .paco_base import PACOBase, deprecated_alias, shm_headroom
+from .paco_base import PACOBase, deprecated_alias, worker_init, shm_headroom
 from .utils import create_boolean_circular_mask, extract_patch_window, get_rotated_pixel_coords
 
 # ---------------------------------------------------------------------------
@@ -185,7 +185,7 @@ def _process_pixel_worker(args_tuple: tuple) -> Tuple[int, float, float]:
     Parameters
     ----------
     args_tuple : tuple
-        (pixel_index, p0_xy, precomputed_shifts_for_this_pixel).
+        (pixel_index, p0_xy).
 
     Returns
     -------
@@ -194,7 +194,7 @@ def _process_pixel_worker(args_tuple: tuple) -> Tuple[int, float, float]:
         whose trajectory leaves the field or meets invalid statistics.
         Any other error is raised.
     """
-    i, p0, precomputed_pixel_data = args_tuple
+    i, p0 = args_tuple
 
     try:
         angles_px = get_rotated_pixel_coords(
@@ -232,9 +232,7 @@ def _process_pixel_worker(args_tuple: tuple) -> Tuple[int, float, float]:
             clst.append(Cinv_cached)
             patches.append(current_patch)
 
-            if l in precomputed_pixel_data:
-                offax = precomputed_pixel_data[l]
-            elif use_subpixel:
+            if use_subpixel:
                 subpix_row = ang[1] - row_rot
                 subpix_col = ang[0] - col_rot
                 offax = frame_shift(
@@ -280,8 +278,6 @@ class PACO(PACOBase):
     This avoids the large memory allocation required by
     :class:`~src.paco_base.PACO` for the full statistics maps while
     retaining the flexibility to process each pixel independently.
-    GPU-based PSF shift pre-computation is available but currently
-    disabled by default (see :meth:`_precompute_shifts_for_batch`).
     """
 
     def __init__(self, *args, cache_memory_fraction: Optional[float] = None,
@@ -310,7 +306,6 @@ class PACO(PACOBase):
         `_gpu_prefill_ring_cache`.
         """
         super().__init__(*args, **kwargs)
-        self.precomputed_shifts: dict = {}
         if cache_memory_fraction is not None:
             warnings.warn("cache_memory_fraction is deprecated; use memory_fraction",
                           DeprecationWarning, stacklevel=2)
@@ -489,7 +484,7 @@ class PACO(PACOBase):
             _G["lock"] = ctx.Lock()
             _G["next_slot"] = ctx.Value('i', 0)
             _G["total_misses"] = ctx.Value('l', 0)  # diagnostic: see last_cache_stats
-            pool = ctx.Pool(processes=cpu)
+            pool = ctx.Pool(processes=cpu, initializer=worker_init)
         else:
             _G["local_cache"] = {}
             _G["miss_counter"] = [0]
@@ -542,14 +537,8 @@ class PACO(PACOBase):
                     sub_phi0s = ring_phi0s[j:j + pixel_batch_size]
                     sub_orig_idx = ring_orig_idx[j:j + pixel_batch_size]
 
-                    precomputed_subset = {
-                        int(pixel_idx): self.precomputed_shifts[int(pixel_idx)]
-                        for pixel_idx in sub_orig_idx
-                        if int(pixel_idx) in self.precomputed_shifts
-                    }
-
                     process_args = [
-                        (int(orig_i), p0, precomputed_subset.get(int(orig_i), {}))
+                        (int(orig_i), p0)
                         for orig_i, p0 in zip(sub_orig_idx, sub_phi0s)
                     ]
 
@@ -827,95 +816,6 @@ class PACO(PACOBase):
                   f"{bytes_per_slot / 1024:.1f} KiB/slot -> "
                   f"capacity={capacity}")
         return capacity
-
-    # ------------------------------------------------------------------
-    # GPU PSF pre-computation (optional, disabled by default)
-    # ------------------------------------------------------------------
-
-    def _precompute_shifts_for_batch(self,
-                                      pixel_batch: np.ndarray,
-                                      original_start_index: int) -> None:
-        """
-        Pre-compute sub-pixel PSF shifts on GPU for an entire pixel batch.
-
-        Results are stored in :attr:`precomputed_shifts` keyed by
-        pixel index. Called before the CPU processing loop when GPU is
-        enabled. Currently unused in the default execution path — activate
-        by un-commenting the call site in :meth:`PACOCalc`.
-
-        Parameters
-        ----------
-        pixel_batch : np.ndarray
-            Subset of test positions for the current processing batch.
-        original_start_index : int
-            Flat index of the first pixel in pixel_batch within the global
-            phi0s array.
-        """
-        self.precomputed_shifts = {}
-        gpu_shifter = None
-        try:
-            gpu_shifter = GPUFrameShifter(
-                self.psf, self.psf_template_mask, verbose=self.verbose)
-
-            all_shifts, shift_to_pixel, valid_mask = [], {}, []
-            shift_idx = 0
-
-            for j, p0 in enumerate(pixel_batch):
-                orig_idx = original_start_index + j
-                is_valid = False
-                try:
-                    angles_px = get_rotated_pixel_coords(
-                        self.centered_grid_x_values,
-                        self.centered_grid_y_values,
-                        p0, self.angles)
-                    col_c, row_c = angles_px[:, 0], angles_px[:, 1]
-                    if not (np.any(col_c < 0) or np.any(col_c >= self.width) or
-                            np.any(row_c < 0) or np.any(row_c >= self.height)):
-                        is_valid = True
-                except Exception:
-                    angles_px = np.zeros((len(self.angles), 2))
-
-                for l, ang in enumerate(angles_px):
-                    if is_valid:
-                        yi = int(np.round(ang[0]))
-                        xi = int(np.round(ang[1]))
-                        all_shifts.append((ang[0] - yi, ang[1] - xi))
-                        shift_to_pixel[shift_idx] = (orig_idx, l)
-                        valid_mask.append(True)
-                    else:
-                        all_shifts.append((0.0, 0.0))
-                        valid_mask.append(False)
-                    shift_idx += 1
-
-            valid_mask_array = np.array(valid_mask)
-            shift_gen = gpu_shifter.stream_precomputed_shifts(
-                all_shifts, valid_mask_array)
-
-            num_valid = int(np.sum(valid_mask_array))
-            pbar = tqdm.tqdm(shift_gen, total=num_valid,
-                             desc="  - GPU preprocessing",
-                             leave=False, disable=not self.verbose)
-
-            num_processed = 0
-            for shift_idx, shifted_psf_flat in pbar:
-                if shift_idx in shift_to_pixel:
-                    pixel_idx, angle_idx = shift_to_pixel[shift_idx]
-                    if pixel_idx not in self.precomputed_shifts:
-                        self.precomputed_shifts[pixel_idx] = {}
-                    self.precomputed_shifts[pixel_idx][angle_idx] = shifted_psf_flat
-                    num_processed += 1
-
-            if self.verbose:
-                print(f"GPU preprocessing: {num_processed} shifts computed.")
-
-        finally:
-            if gpu_shifter is not None:
-                del gpu_shifter
-            try:
-                import cupy
-                cupy.get_default_memory_pool().free_all_blocks()
-            except Exception:
-                pass
 
 
 # Former class name (placeholder from development).

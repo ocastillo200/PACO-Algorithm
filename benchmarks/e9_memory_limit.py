@@ -79,7 +79,7 @@ def load_data(synthetic):
         fwhm = 4.0
         cube, pa, psf = make_synthetic_dataset(T, size, size, fwhm=fwhm)
         return cube, pa, psf, fwhm, 0.01225, f"synthetic_{size}x{size}x{T}"
-    from challenge.make_contrast_curve_sph3 import load_sph3, compute_fwhm
+    from challenge.sph3_data import load_sph3, compute_fwhm
     cube, pa, psf, pxs = load_sph3()
     return cube, pa, psf, compute_fwhm(psf), pxs, "sph3"
 
